@@ -130,7 +130,7 @@ export default function MatchCreationDashboard() {
           <ChunkyInput
             ref={team === "A" ? numRefA : numRefB}
             placeholder="#"
-            className="w-16 text-center"
+            className="w-16 text-center h-[56px]"
             value={team === "A" ? newPlayerA.number : newPlayerB.number}
             error={team === "A" ? (dupErrorA ? "" : undefined) : (dupErrorB ? "" : undefined)}
             onChange={(e) => {
@@ -155,7 +155,7 @@ export default function MatchCreationDashboard() {
           <ChunkyInput
             ref={team === "A" ? nameRefA : nameRefB}
             placeholder="Player Name"
-            className="flex-1"
+            className="flex-1 h-[56px]"
             value={team === "A" ? newPlayerA.name : newPlayerB.name}
             onChange={(e) => {
               const val = e.target.value.replace(/[0-9]/g, '').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -168,8 +168,8 @@ export default function MatchCreationDashboard() {
               }
             }}
           />
-          <ChunkyButton size="md" variant="primary" onClick={() => handleAddPlayer(team)}>
-            + ADD
+          <ChunkyButton size="md" variant="primary" className="h-[56px]" onClick={() => handleAddPlayer(team)}>
+            ADD
           </ChunkyButton>
         </div>
 
@@ -283,7 +283,7 @@ export default function MatchCreationDashboard() {
             disabled={!canStart}
             className={`px-16 text-3xl transition-opacity ${!canStart ? 'opacity-40 cursor-not-allowed active:translate-x-0 active:translate-y-0 active:shadow-[1px_1px_0_#1b630a,2px_2px_0_#1b630a,3px_3px_0_#1b630a,4px_4px_0_#1b630a,5px_5px_0_#1b630a,6px_6px_0_#1b630a]' : ''}`}
           >
-            START MATCH 🚀
+            START MATCH
           </ChunkyButton>
         </div>
       </div>
