@@ -432,7 +432,7 @@ export default function GamePage() {
 
   if (!config) {
     return (
-      <div className="min-h-screen bg-[#f1f5f9] flex items-center justify-center">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <p className="font-fredoka text-2xl text-slate-400 uppercase tracking-widest animate-pulse">Loading...</p>
       </div>
     );
@@ -444,11 +444,11 @@ export default function GamePage() {
   if (phase === "select-starters") {
     const ready = startingA.length === 5 && startingB.length === 5;
     return (
-      <div className="min-h-screen bg-[#f1f5f9] p-8 pb-20">
+      <div className="min-h-screen bg-slate-900 p-8 pb-20">
         <div className="max-w-5xl mx-auto flex flex-col gap-8">
 
-          <header className="border-b-4 border-slate-900 pb-6 mb-4 flex items-end gap-2">
-            <h1 className="font-fredoka text-6xl font-black tracking-widest text-[#1f1f1f]">
+          <header className="border-b-4 border-slate-700 pb-6 mb-4 flex items-end gap-2">
+            <h1 className="font-fredoka text-6xl font-black tracking-widest text-white">
               Wire<span
                 className="text-[#65d421] ml-2"
                 style={{
@@ -457,7 +457,7 @@ export default function GamePage() {
                 }}
               >Stats</span>
             </h1>
-            <p className="font-nunito text-xl mb-1 ml-4 text-slate-700 font-bold uppercase tracking-wider">
+            <p className="font-nunito text-xl mb-1 ml-4 text-slate-400 font-bold uppercase tracking-wider">
               Select Starting 5
             </p>
           </header>
@@ -479,7 +479,7 @@ export default function GamePage() {
 
           <div className="flex flex-col items-center gap-3">
             {!ready && (
-              <p className="font-nunito text-sm font-bold text-slate-500">
+              <p className="font-nunito text-sm font-bold text-slate-400">
                 Select 5 starters per team to begin
               </p>
             )}
