@@ -1,6 +1,7 @@
 import React from "react";
-import { MatchConfig, Player, formatClock } from "@/lib/gameState";
+import { MatchConfig, Player, formatClock, BufferPhase } from "@/lib/gameState";
 import { Jersey } from "@/components/ui/Jersey";
+import { BufferDisplay, BufferState } from "@/components/game/BufferDisplay";
 
 interface Props {
   config: MatchConfig;
@@ -11,13 +12,18 @@ interface Props {
   isRunning: boolean;
   activeA: Player[];
   activeB: Player[];
+  benchA: Player[];
+  benchB: Player[];
+  bufferPhase: BufferPhase;
+  bufferState: BufferState;
+  bufferHint?: string;
   onClockToggle: () => void;
 }
 
-function ActiveRoster({ players, color, align }: { players: Player[]; color: string; align: "left" | "right" }) {
+function Roster({ players, color, align, dimmed }: { players: Player[]; color: string; align: "left" | "right", dimmed?: boolean }) {
   const sorted = [...players].sort((a, b) => parseInt(a.number) - parseInt(b.number));
   return (
-    <div className={`flex gap-2 ${align === "right" ? "justify-end" : "justify-start"}`}>
+    <div className={`flex flex-wrap gap-2 ${align === "right" ? "justify-end" : "justify-start"}`}>
       {sorted.map(p => (
         <Jersey
           key={p.id}
@@ -25,25 +31,31 @@ function ActiveRoster({ players, color, align }: { players: Player[]; color: str
           name={p.name.split(" ")[0]}
           colorHex={color}
           size="sm"
+          dimmed={dimmed}
         />
       ))}
     </div>
   );
 }
 
-export function Scoreboard({ config, scoreA, scoreB, clockSeconds, period, isRunning, activeA, activeB, onClockToggle }: Props) {
+export function Scoreboard({ 
+  config, scoreA, scoreB, clockSeconds, period, isRunning, 
+  activeA, activeB, benchA, benchB, 
+  bufferPhase, bufferState, bufferHint,
+  onClockToggle 
+}: Props) {
   const periodLabel = config.totalPeriods === 4 ? "Q" : "H";
 
   return (
-    <div className="w-full border-4 border-slate-900 bg-white p-6" style={{ boxShadow: "6px 6px 0 #0f172a" }}>
+    <div className=" border-4 border-slate-900 bg-white p-6" style={{ boxShadow: "6px 6px 0 #0f172a" }}>
       {/* Period + Clock */}
-      <div className="flex items-center justify-center gap-6 mb-6">
-        <span className="font-fredoka text-xl font-black uppercase tracking-widest text-slate-500">
+      <div className="grid grid-cols-3 items-center gap-6 mb-6">
+        <span className="font-fredoka text-xl font-black uppercase tracking-widest text-slate-500 text-left">
           {periodLabel}{period}
         </span>
         <button
           onClick={onClockToggle}
-          className={`font-fredoka text-5xl font-black tracking-widest px-6 py-2 border-4 border-slate-900 transition-all
+          className={`font-fredoka text-5xl font-black tracking-widest px-6 py-2 border-4 border-slate-900 transition-all mx-auto
             ${isRunning
               ? "bg-slate-900 text-[#65d421] shadow-[4px_4px_0_#65d421]"
               : "bg-[#65d421] text-slate-900 shadow-[4px_4px_0_#0f172a]"
@@ -51,16 +63,16 @@ export function Scoreboard({ config, scoreA, scoreB, clockSeconds, period, isRun
         >
           {formatClock(clockSeconds)}
         </button>
-        <span className="font-nunito text-sm font-bold text-slate-400 uppercase tracking-widest">
+        <span className="font-nunito text-sm font-bold text-slate-400 uppercase tracking-widest text-right">
           {isRunning ? "▶ LIVE" : "⏸ PAUSED"}
         </span>
       </div>
 
-      {/* Scores */}
+      {/* Scores and Buffer */}
       <div className="grid grid-cols-3 items-center gap-4 mb-6">
         <div className="flex flex-col items-start">
           <span
-            className="font-fredoka text-2xl font-black uppercase tracking-widest px-3 py-1 text-white border-2 border-slate-900"
+            className={`font-fredoka text-2xl font-black uppercase tracking-widest px-3 py-1 text-${config.teamA.colorHex == '#ffffff' ? 'black' : 'white'} border-2 border-slate-900`}
             style={{ backgroundColor: config.teamA.colorHex }}
           >
             {config.teamA.name}
@@ -70,8 +82,15 @@ export function Scoreboard({ config, scoreA, scoreB, clockSeconds, period, isRun
           </span>
         </div>
 
-        <div className="flex flex-col items-center">
-          <span className="font-fredoka text-4xl font-black text-slate-300">—</span>
+        <div className="flex flex-col items-center w-full min-h-[160px]">
+          <BufferDisplay 
+            bufferPhase={bufferPhase} 
+            state={bufferState} 
+            config={config} 
+            activeA={activeA} 
+            activeB={activeB}
+            hint={bufferHint}
+          />
         </div>
 
         <div className="flex flex-col items-end">
@@ -87,10 +106,16 @@ export function Scoreboard({ config, scoreA, scoreB, clockSeconds, period, isRun
         </div>
       </div>
 
-      {/* Active Rosters */}
+      {/* Rosters */}
       <div className="grid grid-cols-2 gap-4 border-t-2 border-slate-200 pt-4">
-        <ActiveRoster players={activeA} color={config.teamA.colorHex} align="left" />
-        <ActiveRoster players={activeB} color={config.teamB.colorHex} align="right" />
+        <div className="flex flex-col gap-2">
+          <Roster players={activeA} color={config.teamA.colorHex} align="left" />
+          <Roster players={benchA} color={config.teamA.colorHex} align="left" dimmed />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Roster players={activeB} color={config.teamB.colorHex} align="right" />
+          <Roster players={benchB} color={config.teamB.colorHex} align="right" dimmed />
+        </div>
       </div>
     </div>
   );

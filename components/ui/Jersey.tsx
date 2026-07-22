@@ -1,6 +1,18 @@
 // components/ui/Jersey.tsx
 import React from "react";
 
+/** Returns true if the hex color is light enough to need dark text. */
+function isLightColor(hex: string): boolean {
+  const clean = hex.replace('#', '');
+  if (clean.length < 6) return false;
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  // Perceived luminance formula
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.65;
+}
+
 interface JerseyProps {
   number: string;
   colorHex: string;
@@ -99,8 +111,8 @@ export function Jersey({
         />
         {/* Number */}
         <span
-          className={`font-fredoka font-black text-white ${s.number} z-10`}
-          style={{ textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}
+          className={`font-fredoka font-black ${isLightColor(colorHex) ? 'text-slate-900' : 'text-white'} ${s.number} z-10`}
+          style={{ textShadow: isLightColor(colorHex) ? "0 1px 3px rgba(255,255,255,0.3)" : "0 1px 4px rgba(0,0,0,0.5)" }}
         >
           {number}
         </span>

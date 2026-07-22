@@ -37,3 +37,21 @@ body {
 .animate-shake {
   animation: shake 0.6s ease-in-out;
 }
+
+@keyframes floatUpFadeIn {
+  0% { transform: translateY(20px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes floatUpFadeOut {
+  0% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(-20px); opacity: 0; }
+}
+
+.animate-float-in {
+  animation: floatUpFadeIn 0.8s ease-out forwards;
+}
+
+.animate-float-out {
+  animation: floatUpFadeOut 0.8s ease-in forwards;
+}

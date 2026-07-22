@@ -10,22 +10,18 @@ import {
   GameEvent,
   StatType,
   formatClock,
+  BufferPhase,
 } from "@/lib/gameState";
 import { StartingFiveSelector } from "@/components/game/StartingFiveSelector";
 import { Scoreboard } from "@/components/game/Scoreboard";
 import { BufferDisplay, BufferState } from "@/components/game/BufferDisplay";
 import { EventLog } from "@/components/game/EventLog";
 import { UndoModal } from "@/components/game/UndoModal";
+import { InstructionsModal } from "@/components/game/InstructionsModal";
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Buffer parsing types
+// Buffer parsing types moved to lib/gameState.ts
 // ──────────────────────────────────────────────────────────────────────────────
-type BufferPhase =
-  | { phase: "idle" }
-  | { phase: "jersey"; jersey: string }
-  | { phase: "team"; jersey: string; team: "A" | "B" }
-  | { phase: "action"; jersey: string; team: "A" | "B"; action: "2" | "3" | "f" | "x" }
-  | { phase: "sub-out-jersey"; jersey: string; team: "A" | "B"; subOutJersey: string };
 
 export default function GamePage() {
   const router = useRouter();
@@ -50,9 +46,29 @@ export default function GamePage() {
   const [bufferPhase, setBufferPhase] = useState<BufferPhase>({ phase: "idle" });
   const [bufferState, setBufferState] = useState<BufferState>("idle");
   const [bufferError, setBufferError] = useState(false);
+  const [bufferErrorMsg, setBufferErrorMsg] = useState<string | null>(null);
 
   // ── Undo modal ────────────────────────────────────────────────────────────
   const [undoTarget, setUndoTarget] = useState<GameEvent | null>(null);
+
+  // ── Instructions modal ────────────────────────────────────────────────────
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [hideInstructionsForever, setHideInstructionsForever] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const hide = localStorage.getItem("hideInstructions") === "true";
+      setHideInstructionsForever(hide);
+    }
+  }, []);
+
+  const closeInstructions = (neverShowAgain: boolean) => {
+    if (neverShowAgain) {
+      localStorage.setItem("hideInstructions", "true");
+      setHideInstructionsForever(true);
+    }
+    setShowInstructions(false);
+  };
 
   const clockRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const configRef = useRef<MatchConfig | null>(null);
@@ -86,14 +102,18 @@ export default function GamePage() {
   }, [isRunning]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-  const flashError = useCallback(() => {
+  const flashError = useCallback((keepBuffer = false, msg?: string) => {
     setBufferState("error");
     setBufferError(true);
+    if (msg) setBufferErrorMsg(msg);
     setTimeout(() => {
-      setBufferPhase({ phase: "idle" });
+      if (!keepBuffer) {
+        setBufferPhase({ phase: "idle" });
+      }
       setBufferState("idle");
       setBufferError(false);
-    }, 700);
+      setBufferErrorMsg(null);
+    }, keepBuffer ? 2000 : 700);
   }, []);
 
   const getBufferDisplay = useCallback((): string => {
@@ -102,7 +122,7 @@ export default function GamePage() {
       case "jersey": return `#${bufferPhase.jersey}`;
       case "team": return `#${bufferPhase.jersey} ${bufferPhase.team === "A" ? "← A" : "B →"}`;
       case "action": {
-        const actionLabel: Record<string, string> = { "2": "2PT", "3": "3PT", f: "FT/FOUL", x: "SUB" };
+        const actionLabel: Record<string, string> = { "2": "2PT", "3": "3PT", f: "FOUL", ft: "FT", x: "SUB" };
         return `#${bufferPhase.jersey} ${bufferPhase.team === "A" ? "← A" : "B →"} · ${actionLabel[bufferPhase.action]}`;
       }
       case "sub-out-jersey":
@@ -112,16 +132,23 @@ export default function GamePage() {
   }, [bufferPhase]);
 
   const getBufferHint = useCallback((): string => {
+    if (bufferErrorMsg) return bufferErrorMsg;
     switch (bufferPhase.phase) {
       case "idle": return "Type jersey #...";
       case "jersey": return "Press ← or → to pick team";
-      case "team": return "Press 2, 3, f, or x";
+      case "team": return "Press 2, 3, f (foul), or x (sub)";
       case "action":
-        return bufferPhase.action === "x" ? "Type outgoing jersey #" : "Press Enter to commit";
+        if (bufferPhase.action === "x") {
+          const active = bufferPhase.team === "A" ? activeA : activeB;
+          const isFirstActive = active.some(p => p.number === bufferPhase.jersey);
+          return isFirstActive ? "Type incoming jersey #" : "Type outgoing jersey #";
+        }
+        if (bufferPhase.action === "f") return "Enter = FOUL · T = Free Throw";
+        return "Press Enter to commit";
       case "sub-out-jersey": return "Press Enter to commit sub";
       default: return "";
     }
-  }, [bufferPhase]);
+  }, [bufferPhase, bufferErrorMsg, activeA, activeB]);
 
   const getBufferUIState = useCallback((): BufferState => {
     if (bufferError) return "error";
@@ -218,56 +245,83 @@ export default function GamePage() {
       // ── Enter: commit ─────────────────────────────────────────────────────
       if (key === "Enter") {
         e.preventDefault();
-        setBufferPhase(prev => {
-          if (prev.phase !== "action" && prev.phase !== "sub-out-jersey") {
-            flashError();
-            return prev;
+
+        const prev = bufferPhase;
+        if (prev.phase !== "action" && prev.phase !== "sub-out-jersey") {
+          flashError();
+          return;
+        }
+
+        const active = prev.team === "A" ? activeA : activeB;
+        const roster = prev.team === "A" ? cfg.teamA.players : cfg.teamB.players;
+        const player = roster.find(p => p.number === prev.jersey);
+
+        if (!player) { flashError(); return; }
+
+        if (prev.phase === "action") {
+          if (prev.action === "x") { flashError(); return; }
+
+          // Ensure player is active (cannot score/foul if not active)
+          const isActive = active.some(p => p.id === player.id);
+          if (!isActive) {
+            // Show error, keep jersey/team in buffer, remove action
+            flashError(true, "Bench player cannot score or foul");
+            setBufferPhase({ phase: "team", jersey: prev.jersey, team: prev.team });
+            return;
+          }
+          const actionToType: Record<"2" | "3" | "f" | "ft", StatType> = {
+            "2": "2PT",
+            "3": "3PT",
+            "f": "FOUL",
+            "ft": "FT",
+          };
+          const eventType = actionToType[prev.action as "2" | "3" | "f" | "ft"];
+          const pts = prev.action === "2" ? 2 : prev.action === "3" ? 3 : prev.action === "ft" ? 1 : 0;
+          commitEvent({
+            id: crypto.randomUUID(),
+            period,
+            clockSnapshot: formatClock(clockSeconds),
+            team: prev.team,
+            player,
+            type: eventType,
+            points: pts,
+          });
+          setBufferPhase({ phase: "idle" });
+          return;
+        }
+
+        if (prev.phase === "sub-out-jersey") {
+          const player2 = roster.find(p => p.number === prev.subOutJersey);
+          if (!player2) { flashError(true, "Player not found"); return; }
+          
+          const p1IsActive = active.some(p => p.id === player.id);
+          const p2IsActive = active.some(p => p.id === player2.id);
+
+          if (p1IsActive && p2IsActive) {
+            flashError(true, "Cannot sub active for active");
+            return;
+          }
+          if (!p1IsActive && !p2IsActive) {
+            flashError(true, "Cannot sub bench for bench");
+            return;
           }
 
-          const active = prev.team === "A" ? activeA : activeB;
-          const roster = prev.team === "A" ? cfg.teamA.players : cfg.teamB.players;
-          const player = roster.find(p => p.number === prev.jersey);
+          const inPlayer = p1IsActive ? player2 : player;
+          const outPlayer = p1IsActive ? player : player2;
 
-          if (!player) { flashError(); return prev; }
+          commitEvent({
+            id: crypto.randomUUID(),
+            period,
+            clockSnapshot: formatClock(clockSeconds),
+            team: prev.team,
+            player: inPlayer,
+            type: "SUB",
+            playerOut: outPlayer,
+          });
+          setBufferPhase({ phase: "idle" });
+          return;
+        }
 
-          if (prev.phase === "action") {
-            const actionToType: Record<"2" | "3" | "f", StatType> = {
-              "2": "2PT",
-              "3": "3PT",
-              "f": "FT",
-            };
-            if (prev.action === "x") { flashError(); return prev; } // sub needs out jersey
-
-            const eventType = actionToType[prev.action as "2" | "3" | "f"];
-            commitEvent({
-              id: crypto.randomUUID(),
-              period,
-              clockSnapshot: formatClock(clockSeconds),
-              team: prev.team,
-              player,
-              type: eventType,
-              points: prev.action === "2" ? 2 : prev.action === "3" ? 3 : 1,
-            });
-            return { phase: "idle" };
-          }
-
-          if (prev.phase === "sub-out-jersey") {
-            const outPlayer = active.find(p => p.number === prev.subOutJersey);
-            if (!outPlayer) { flashError(); return prev; }
-            commitEvent({
-              id: crypto.randomUUID(),
-              period,
-              clockSnapshot: formatClock(clockSeconds),
-              team: prev.team,
-              player,
-              type: "SUB",
-              playerOut: outPlayer,
-            });
-            return { phase: "idle" };
-          }
-
-          return prev;
-        });
         return;
       }
 
@@ -275,23 +329,31 @@ export default function GamePage() {
       if (key === "ArrowLeft" || key === "ArrowRight") {
         e.preventDefault();
         const team = key === "ArrowLeft" ? "A" : "B";
-        setBufferPhase(prev => {
-          if (prev.phase !== "jersey" || prev.jersey.length === 0) return prev;
-          return { phase: "team", jersey: prev.jersey, team };
-        });
+        
+        if (bufferPhase.phase !== "jersey" || bufferPhase.jersey.length === 0) return;
+        
+        const roster = team === "A" ? cfg.teamA.players : cfg.teamB.players;
+        const playerExists = roster.some(p => p.number === bufferPhase.jersey);
+        
+        if (!playerExists) {
+          flashError(false, "Player not found");
+          return;
+        }
+
+        setBufferPhase({ phase: "team", jersey: bufferPhase.jersey, team });
         return;
       }
 
-      // ── Action keys ───────────────────────────────────────────────────────
-      if (key === "2" || key === "3" || key.toLowerCase() === "f" || key.toLowerCase() === "x") {
-        setBufferPhase(prev => {
-          if (prev.phase !== "team") return prev;
-          const action = key === "2" ? "2" : key === "3" ? "3" : key.toLowerCase() === "f" ? "f" : "x";
-          if (action === "x") {
-            return { phase: "action", jersey: prev.jersey, team: prev.team, action: "x" };
-          }
-          return { phase: "action", jersey: prev.jersey, team: prev.team, action: action as "2" | "3" | "f" };
-        });
+      // ── Action keys (only valid in team phase) ────────────────────────────
+      if (bufferPhase.phase === "team" && (key === "2" || key === "3" || key.toLowerCase() === "f" || key.toLowerCase() === "x")) {
+        const action = key === "2" ? "2" : key === "3" ? "3" : key.toLowerCase() === "f" ? "f" : "x";
+        setBufferPhase({ phase: "action", jersey: bufferPhase.jersey, team: bufferPhase.team, action: action as "2" | "3" | "f" | "ft" | "x" });
+        return;
+      }
+
+      // ── T key: promote foul → free throw ─────────────────────────────────
+      if (key.toLowerCase() === "t" && bufferPhase.phase === "action" && bufferPhase.action === "f") {
+        setBufferPhase({ phase: "action", jersey: bufferPhase.jersey, team: bufferPhase.team, action: "ft" });
         return;
       }
 
@@ -316,7 +378,7 @@ export default function GamePage() {
 
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [phase, activeA, activeB, period, clockSeconds, flashError, commitEvent]);
+  }, [phase, bufferPhase, activeA, activeB, period, clockSeconds, flashError, commitEvent]);
 
   // ── Undo handler ──────────────────────────────────────────────────────────
   const confirmUndo = useCallback(() => {
@@ -347,6 +409,9 @@ export default function GamePage() {
     setActiveA(startingA);
     setActiveB(startingB);
     setPhase("live");
+    if (!hideInstructionsForever) {
+      setShowInstructions(true);
+    }
   };
 
   const toggleStarter = (team: "A" | "B", player: Player) => {
@@ -427,7 +492,7 @@ export default function GamePage() {
                   : "bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed opacity-50"
                 }`}
             >
-              TIPOFF 🏀
+              TIPOFF
             </button>
           </div>
         </div>
@@ -458,6 +523,12 @@ export default function GamePage() {
               {config.periods} · {config.gameTimeMinutes} min
             </span>
             <button
+              onClick={() => setShowInstructions(true)}
+              className="font-nunito text-sm font-bold text-slate-400 border border-slate-600 px-3 py-1 hover:text-white hover:border-slate-400 transition-colors"
+            >
+              Instructions
+            </button>
+            <button
               onClick={() => router.push("/")}
               className="font-nunito text-sm font-bold text-slate-400 border border-slate-600 px-3 py-1 hover:text-white hover:border-slate-400 transition-colors"
             >
@@ -476,16 +547,37 @@ export default function GamePage() {
           isRunning={isRunning}
           activeA={activeA}
           activeB={activeB}
+          benchA={config.teamA.players.filter(p => !activeA.find(a => a.id === p.id))}
+          benchB={config.teamB.players.filter(p => !activeB.find(a => a.id === p.id))}
+          bufferPhase={bufferPhase}
+          bufferState={getBufferUIState()}
+          bufferHint={getBufferHint()}
           onClockToggle={() => setIsRunning(r => !r)}
         />
 
-        {/* Buffer */}
-        <div className="border-4 border-slate-700 bg-slate-800 p-5" style={{ boxShadow: "6px 6px 0 #0f172a" }}>
-          <BufferDisplay
-            buffer={getBufferDisplay()}
-            state={getBufferUIState()}
-            hint={getBufferHint()}
-          />
+        {/* Instructions */}
+        <div className="flex gap-3 flex-wrap justify-center font-nunito text-xs text-slate-500 font-semibold p-4">
+          <span className="px-2 py-1 bg-slate-800 text-slate-300 border border-slate-700">
+            <kbd className="font-mono text-white">←/→</kbd> Team
+          </span>
+          <span className="px-2 py-1 bg-slate-800 text-slate-300 border border-slate-700">
+            <kbd className="font-mono text-white">2</kbd>/<kbd className="font-mono text-white">3</kbd>/<kbd className="font-mono text-white">f</kbd>/<kbd className="font-mono text-white">t</kbd> Action
+          </span>
+          <span className="px-2 py-1 bg-slate-800 text-slate-300 border border-slate-700">
+            <kbd className="font-mono text-white">x</kbd> Sub
+          </span>
+          <span className="px-2 py-1 bg-slate-800 text-slate-300 border border-slate-700">
+            <kbd className="font-mono text-white">↵ Enter</kbd> Commit
+          </span>
+          <span className="px-2 py-1 bg-slate-800 text-slate-300 border border-slate-700">
+            <kbd className="font-mono text-white">Space</kbd> Clock
+          </span>
+          <span className="px-2 py-1 bg-slate-800 text-slate-300 border border-slate-700">
+            <kbd className="font-mono text-white">Esc</kbd> Clear
+          </span>
+          <span className="px-2 py-1 bg-slate-800 text-slate-300 border border-slate-700">
+            <kbd className="font-mono text-white">Ctrl+Z</kbd> Undo
+          </span>
         </div>
 
         {/* Event Log */}
@@ -508,6 +600,11 @@ export default function GamePage() {
           onConfirm={confirmUndo}
           onCancel={() => setUndoTarget(null)}
         />
+      )}
+
+      {/* Instructions Modal */}
+      {showInstructions && (
+        <InstructionsModal onClose={closeInstructions} />
       )}
     </div>
   );

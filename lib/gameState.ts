@@ -58,3 +58,10 @@ export function formatClock(totalSeconds: number): string {
   const s = totalSeconds % 60;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
+
+export type BufferPhase =
+  | { phase: "idle" }
+  | { phase: "jersey"; jersey: string }
+  | { phase: "team"; jersey: string; team: "A" | "B" }
+  | { phase: "action"; jersey: string; team: "A" | "B"; action: "2" | "3" | "f" | "ft" | "x" }
+  | { phase: "sub-out-jersey"; jersey: string; team: "A" | "B"; subOutJersey: string };
