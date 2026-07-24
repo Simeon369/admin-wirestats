@@ -205,6 +205,10 @@ export default function GamePage() {
         period: event.period,
         clock_snapshot: event.clockSnapshot,
         team: event.team,
+        player_name: event.player.name,
+        player_number: event.player.number,
+        player_out_name: event.playerOut?.name ?? null,
+        player_out_number: event.playerOut?.number ?? null,
       }).then(({ error }) => { if (error) console.error("Event sync error:", error); });
 
       // Update score in games table
@@ -508,25 +512,46 @@ export default function GamePage() {
       let newTime = s + amountSeconds;
       if (newTime < 0) newTime = 0;
       if (newTime > 59 * 60) newTime = 59 * 60;
+      
+      // Sync manual adjustments directly
+      if (gameIdRef.current) {
+        supabase.from("games").update({ clock_seconds: newTime })
+          .eq("id", gameIdRef.current)
+          .then(({ error }) => { if (error) console.error("Manual clock sync error:", error); });
+      }
       return newTime;
     });
   }, [isRunning]);
 
-  // ── Debounced clock/period/isRunning sync to Supabase ───────────────────
+  const latestClockRef = useRef(clockSeconds);
+  useEffect(() => {
+    latestClockRef.current = clockSeconds;
+  }, [clockSeconds]);
+
+  // ── Clock/period/isRunning sync to Supabase ───────────────────
   useEffect(() => {
     if (!gameIdRef.current) return;
-    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-    syncTimeoutRef.current = setTimeout(() => {
-      if (!gameIdRef.current) return;
-      supabase.from("games").update({
-        clock_seconds: clockSeconds,
-        period,
-        is_running: isRunning,
-      }).eq("id", gameIdRef.current)
-        .then(({ error }) => { if (error) console.error("Clock sync error:", error); });
-    }, isRunning ? 5000 : 500); // throttle to every 5s when running, 500ms when paused
-    return () => { if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current); };
-  }, [clockSeconds, period, isRunning]);
+    
+    // Sync immediately on play/pause or period change
+    supabase.from("games").update({
+      clock_seconds: latestClockRef.current,
+      period,
+      is_running: isRunning,
+    }).eq("id", gameIdRef.current)
+      .then(({ error }) => { if (error) console.error("Clock sync error:", error); });
+
+    // If running, set an interval to sync every 5 seconds
+    if (isRunning) {
+      const interval = setInterval(() => {
+        if (!gameIdRef.current) return;
+        supabase.from("games").update({
+          clock_seconds: latestClockRef.current,
+        }).eq("id", gameIdRef.current)
+          .then(({ error }) => { if (error) console.error("Interval clock sync error:", error); });
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [isRunning, period]);
 
   const handleEndPeriod = useCallback(() => {
     if (!config) return;
