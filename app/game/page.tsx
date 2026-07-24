@@ -527,6 +527,13 @@ export default function GamePage() {
     setPeriod(p => Math.max(1, p - 1));
     setClockSeconds(config.gameTimeMinutes * 60);
     setIsRunning(false);
+    setFoulsA(0);
+    setFoulsB(0);
+    if (gameIdRef.current) {
+      supabase.from("games").update({ fouls_a: 0, fouls_b: 0 })
+        .eq("id", gameIdRef.current)
+        .then(({ error }) => { if (error) console.error("Foul reset sync error:", error); });
+    }
   }, [config]);
 
   const handleNextPeriod = useCallback(() => {
@@ -534,6 +541,13 @@ export default function GamePage() {
     setPeriod(p => p + 1);
     setClockSeconds(config.gameTimeMinutes * 60);
     setIsRunning(false);
+    setFoulsA(0);
+    setFoulsB(0);
+    if (gameIdRef.current) {
+      supabase.from("games").update({ fouls_a: 0, fouls_b: 0 })
+        .eq("id", gameIdRef.current)
+        .then(({ error }) => { if (error) console.error("Foul reset sync error:", error); });
+    }
   }, [config]);
 
   const handleTimeAdjust = useCallback((amountSeconds: number) => {
@@ -589,6 +603,13 @@ export default function GamePage() {
       if (scoreA === scoreB) {
         setPeriod(p => p + 1);
         setClockSeconds(config.gameTimeMinutes * 60);
+        setFoulsA(0);
+        setFoulsB(0);
+        if (gameIdRef.current) {
+          supabase.from("games").update({ fouls_a: 0, fouls_b: 0 })
+            .eq("id", gameIdRef.current)
+            .then(({ error }) => { if (error) console.error("Foul reset sync error:", error); });
+        }
       } else {
         setMatchEnded(true);
         // Mark game as finished in Supabase
