@@ -55,6 +55,9 @@ export default function GamePage() {
   const [showInstructions, setShowInstructions] = useState(false);
   const [hideInstructionsForever, setHideInstructionsForever] = useState(false);
 
+  // ── Match Ended modal ─────────────────────────────────────────────────────
+  const [matchEnded, setMatchEnded] = useState(false);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       const hide = localStorage.getItem("hideInstructions") === "true";
@@ -430,6 +433,45 @@ export default function GamePage() {
     }
   };
 
+  const handlePrevPeriod = useCallback(() => {
+    if (!config) return;
+    setPeriod(p => Math.max(1, p - 1));
+    setClockSeconds(config.gameTimeMinutes * 60);
+    setIsRunning(false);
+  }, [config]);
+
+  const handleNextPeriod = useCallback(() => {
+    if (!config) return;
+    setPeriod(p => p + 1);
+    setClockSeconds(config.gameTimeMinutes * 60);
+    setIsRunning(false);
+  }, [config]);
+
+  const handleTimeAdjust = useCallback((amountSeconds: number) => {
+    if (isRunning) return;
+    setClockSeconds(s => {
+      let newTime = s + amountSeconds;
+      if (newTime < 0) newTime = 0;
+      if (newTime > 59 * 60) newTime = 59 * 60;
+      return newTime;
+    });
+  }, [isRunning]);
+
+  const handleEndPeriod = useCallback(() => {
+    if (!config) return;
+    if (period >= config.totalPeriods) {
+      if (scoreA === scoreB) {
+        setPeriod(p => p + 1);
+        setClockSeconds(config.gameTimeMinutes * 60);
+      } else {
+        setMatchEnded(true);
+      }
+    } else {
+      setPeriod(p => p + 1);
+      setClockSeconds(config.gameTimeMinutes * 60);
+    }
+  }, [config, period, scoreA, scoreB]);
+
   if (!config) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -503,6 +545,9 @@ export default function GamePage() {
   // ═══════════════════════════════════════════════════════════════════════════
   // LIVE GAME SCREEN
   // ═══════════════════════════════════════════════════════════════════════════
+  const foulsA = events.filter(e => e.period === period && e.team === "A" && e.type === "FOUL").length;
+  const foulsB = events.filter(e => e.period === period && e.team === "B" && e.type === "FOUL").length;
+
   return (
     <div className="min-h-screen bg-slate-900 p-6 pb-20">
       <div className="max-w-5xl mx-auto flex flex-col gap-6">
@@ -552,7 +597,13 @@ export default function GamePage() {
           bufferPhase={bufferPhase}
           bufferState={getBufferUIState()}
           bufferHint={getBufferHint()}
+          foulsA={foulsA}
+          foulsB={foulsB}
           onClockToggle={() => setIsRunning(r => !r)}
+          onPrevPeriod={handlePrevPeriod}
+          onNextPeriod={handleNextPeriod}
+          onTimeAdjust={handleTimeAdjust}
+          onEndPeriod={handleEndPeriod}
         />
 
         {/* Instructions */}
@@ -605,6 +656,55 @@ export default function GamePage() {
       {/* Instructions Modal */}
       {showInstructions && (
         <InstructionsModal onClose={closeInstructions} />
+      )}
+
+      {/* End Match Modal */}
+      {matchEnded && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-white border-4 border-slate-900 p-8 max-w-lg w-full shadow-[12px_12px_0_#0f172a] flex flex-col gap-6 text-center animate-in zoom-in-95 duration-200">
+            <h2 className="font-fredoka text-5xl font-black uppercase tracking-widest text-slate-900">
+              Match Ended
+            </h2>
+            
+            <div className="flex items-center justify-between gap-4 py-6 border-y-4 border-slate-100">
+              <div className="flex flex-col items-center flex-1">
+                <span className="font-fredoka text-xl font-black uppercase truncate w-full" style={{ color: config.teamA.colorHex }}>{config.teamA.name}</span>
+                <span className="font-fredoka text-6xl font-black text-slate-900 mt-2">{scoreA}</span>
+              </div>
+              <span className="font-fredoka text-3xl font-black text-slate-300">-</span>
+              <div className="flex flex-col items-center flex-1">
+                <span className="font-fredoka text-xl font-black uppercase truncate w-full" style={{ color: config.teamB.colorHex }}>{config.teamB.name}</span>
+                <span className="font-fredoka text-6xl font-black text-slate-900 mt-2">{scoreB}</span>
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-2 mb-4">
+              <span className="font-nunito text-lg font-bold text-slate-500 uppercase tracking-widest">Winner</span>
+              <span className="font-fredoka text-4xl font-black uppercase px-6 py-2 border-4 border-slate-900" 
+                style={{ 
+                  backgroundColor: scoreA > scoreB ? config.teamA.colorHex : config.teamB.colorHex, 
+                  color: (scoreA > scoreB ? config.teamA.colorHex : config.teamB.colorHex).toLowerCase() === '#ffffff' ? '#0f172a' : '#ffffff' 
+                }}>
+                {scoreA > scoreB ? config.teamA.name : config.teamB.name}
+              </span>
+            </div>
+
+            <div className="flex gap-4 mt-2">
+              <button
+                onClick={() => setMatchEnded(false)}
+                className="flex-1 font-fredoka text-xl font-black uppercase tracking-widest px-6 py-4 border-4 border-slate-900 bg-slate-200 hover:bg-slate-300 text-slate-900 transition-all active:translate-y-1"
+              >
+                BACK
+              </button>
+              <button
+                onClick={() => router.push("/")}
+                className="flex-1 font-fredoka text-xl font-black uppercase tracking-widest px-6 py-4 border-4 border-[#1b630a] bg-[#65d421] hover:bg-[#7ced38] text-white transition-all shadow-[4px_4px_0_#1b630a] active:shadow-none active:translate-x-1 active:translate-y-1"
+              >
+                HOME
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
