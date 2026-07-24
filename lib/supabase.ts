@@ -15,8 +15,8 @@ export function getSupabase(): SupabaseClient {
 
 // Named export for convenience — only safe to use in browser/effect context
 export const supabase = (() => {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
+  const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
+  const key = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
   if (!url || !key) {
     // Return a dummy client during SSR prerender — real calls happen client-side
     return null as unknown as SupabaseClient;

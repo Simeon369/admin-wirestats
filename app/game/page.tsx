@@ -499,6 +499,7 @@ export default function GamePage() {
 
     if (error) {
       console.error("Failed to create game in Supabase:", error);
+      window.alert(`Database Error: ${error.message}\n\nDid you forget to run the 00004 SQL migration? The game will not sync to the viewer until the database schema is updated.`);
     } else if (data) {
       gameIdRef.current = data.id;
       console.log("Game created in Supabase:", data.id);
@@ -676,8 +677,6 @@ export default function GamePage() {
   // ═══════════════════════════════════════════════════════════════════════════
   // LIVE GAME SCREEN
   // ═══════════════════════════════════════════════════════════════════════════
-  const foulsA = events.filter(e => e.period === period && e.team === "A" && e.type === "FOUL").length;
-  const foulsB = events.filter(e => e.period === period && e.team === "B" && e.type === "FOUL").length;
 
   return (
     <div className="min-h-screen bg-slate-900 p-6 pb-20">
