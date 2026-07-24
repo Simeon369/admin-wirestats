@@ -18,6 +18,7 @@ import { BufferDisplay, BufferState } from "@/components/game/BufferDisplay";
 import { EventLog } from "@/components/game/EventLog";
 import { UndoModal } from "@/components/game/UndoModal";
 import { InstructionsModal } from "@/components/game/InstructionsModal";
+import { supabase } from "@/lib/supabase";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Buffer parsing types moved to lib/gameState.ts
@@ -75,6 +76,8 @@ export default function GamePage() {
 
   const clockRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const configRef = useRef<MatchConfig | null>(null);
+  const gameIdRef = useRef<string | null>(null);  // Supabase game row ID
+  const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Load config ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -167,12 +170,17 @@ export default function GamePage() {
 
   const commitEvent = useCallback((event: GameEvent) => {
     setEvents(prev => [...prev, event]);
+    let newScoreA = scoreA;
+    let newScoreB = scoreB;
     if (event.type === "2PT") {
-      event.team === "A" ? setScoreA(s => s + 2) : setScoreB(s => s + 2);
+      event.team === "A" ? setScoreA(s => { newScoreA = s + 2; return newScoreA; }) : setScoreB(s => { newScoreB = s + 2; return newScoreB; });
+      event.team === "A" ? (newScoreA = scoreA + 2) : (newScoreB = scoreB + 2);
     } else if (event.type === "3PT") {
-      event.team === "A" ? setScoreA(s => s + 3) : setScoreB(s => s + 3);
+      event.team === "A" ? setScoreA(s => { newScoreA = s + 3; return newScoreA; }) : setScoreB(s => { newScoreB = s + 3; return newScoreB; });
+      event.team === "A" ? (newScoreA = scoreA + 3) : (newScoreB = scoreB + 3);
     } else if (event.type === "FT") {
-      event.team === "A" ? setScoreA(s => s + 1) : setScoreB(s => s + 1);
+      event.team === "A" ? setScoreA(s => { newScoreA = s + 1; return newScoreA; }) : setScoreB(s => { newScoreB = s + 1; return newScoreB; });
+      event.team === "A" ? (newScoreA = scoreA + 1) : (newScoreB = scoreB + 1);
     } else if (event.type === "SUB" && event.playerOut) {
       const inPlayer = event.player;
       const outPlayer = event.playerOut;
@@ -184,7 +192,30 @@ export default function GamePage() {
     }
     setBufferPhase({ phase: "idle" });
     setBufferState("idle");
-  }, []);
+
+    // ── Push event to Supabase ────────────────────────────────────────────
+    if (gameIdRef.current) {
+      const eventTypeMap: Record<string, string> = {
+        "2PT": "2pt", "3PT": "3pt", "FT": "ft", "FOUL": "foul", "SUB": "sub"
+      };
+      supabase.from("stat_events").insert({
+        game_id: gameIdRef.current,
+        event_type: eventTypeMap[event.type] ?? event.type.toLowerCase(),
+        points: event.points ?? 0,
+        period: event.period,
+        clock_snapshot: event.clockSnapshot,
+        team: event.team,
+      }).then(({ error }) => { if (error) console.error("Event sync error:", error); });
+
+      // Update score in games table
+      supabase.from("games").update({
+        score_a: newScoreA,
+        score_b: newScoreB,
+      }).eq("id", gameIdRef.current)
+        .then(({ error }) => { if (error) console.error("Score sync error:", error); });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scoreA, scoreB]);
 
   // ── Keyboard engine ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -407,13 +438,37 @@ export default function GamePage() {
   }, [undoTarget]);
 
   // ── Start game ────────────────────────────────────────────────────────────
-  const handleStartGame = () => {
+  const handleStartGame = async () => {
     if (startingA.length !== 5 || startingB.length !== 5) return;
+    const cfg = configRef.current;
+    if (!cfg) return;
+
     setActiveA(startingA);
     setActiveB(startingB);
     setPhase("live");
     if (!hideInstructionsForever) {
       setShowInstructions(true);
+    }
+
+    // Create game row in Supabase
+    const { data, error } = await supabase.from("games").insert({
+      status: "active",
+      team_a_name: cfg.teamA.name,
+      team_b_name: cfg.teamB.name,
+      team_a_color: cfg.teamA.colorHex,
+      team_b_color: cfg.teamB.colorHex,
+      score_a: 0,
+      score_b: 0,
+      period: 1,
+      clock_seconds: cfg.gameTimeMinutes * 60,
+      is_running: false,
+    }).select("id").single();
+
+    if (error) {
+      console.error("Failed to create game in Supabase:", error);
+    } else if (data) {
+      gameIdRef.current = data.id;
+      console.log("Game created in Supabase:", data.id);
     }
   };
 
@@ -457,6 +512,22 @@ export default function GamePage() {
     });
   }, [isRunning]);
 
+  // ── Debounced clock/period/isRunning sync to Supabase ───────────────────
+  useEffect(() => {
+    if (!gameIdRef.current) return;
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    syncTimeoutRef.current = setTimeout(() => {
+      if (!gameIdRef.current) return;
+      supabase.from("games").update({
+        clock_seconds: clockSeconds,
+        period,
+        is_running: isRunning,
+      }).eq("id", gameIdRef.current)
+        .then(({ error }) => { if (error) console.error("Clock sync error:", error); });
+    }, isRunning ? 5000 : 500); // throttle to every 5s when running, 500ms when paused
+    return () => { if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current); };
+  }, [clockSeconds, period, isRunning]);
+
   const handleEndPeriod = useCallback(() => {
     if (!config) return;
     if (period >= config.totalPeriods) {
@@ -465,6 +536,12 @@ export default function GamePage() {
         setClockSeconds(config.gameTimeMinutes * 60);
       } else {
         setMatchEnded(true);
+        // Mark game as finished in Supabase
+        if (gameIdRef.current) {
+          supabase.from("games").update({ status: "finished" })
+            .eq("id", gameIdRef.current)
+            .then(({ error }) => { if (error) console.error("Game finish sync error:", error); });
+        }
       }
     } else {
       setPeriod(p => p + 1);
