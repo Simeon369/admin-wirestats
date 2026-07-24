@@ -81,13 +81,73 @@ export default function GamePage() {
   const gameIdRef = useRef<string | null>(null);  // Supabase game row ID
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Load config ───────────────────────────────────────────────────────────
+  // ── Load config + resume ongoing game ─────────────────────────────────────
   useEffect(() => {
     const cfg = loadMatchConfig();
     if (!cfg) { router.push("/"); return; }
     setConfig(cfg);
     configRef.current = cfg;
     setClockSeconds(cfg.gameTimeMinutes * 60);
+
+    // Check if there's an ongoing game session to resume
+    const savedGameId = localStorage.getItem("wirestats_active_game_id");
+    if (!savedGameId || !supabase) return;
+
+    // Try to resume the saved game
+    supabase
+      .from("games")
+      .select("*")
+      .eq("id", savedGameId)
+      .eq("status", "active")
+      .single()
+      .then(async ({ data: game, error }) => {
+        if (error || !game) {
+          // Game not found or already finished — clear the stale key
+          localStorage.removeItem("wirestats_active_game_id");
+          return;
+        }
+
+        // Restore all game state from the database row
+        gameIdRef.current = game.id;
+        setScoreA(game.score_a ?? 0);
+        setScoreB(game.score_b ?? 0);
+        setFoulsA(game.fouls_a ?? 0);
+        setFoulsB(game.fouls_b ?? 0);
+        setPeriod(game.period ?? 1);
+        setClockSeconds(game.clock_seconds ?? cfg.gameTimeMinutes * 60);
+        setIsRunning(false); // always start paused on resume
+
+        const activeA = (game.roster_active_a ?? []) as Player[];
+        const activeB = (game.roster_active_b ?? []) as Player[];
+        setActiveA(activeA);
+        setActiveB(activeB);
+
+        // Load recent events for the event log
+        const { data: evData } = await supabase
+          .from("stat_events")
+          .select("id, event_type, period, clock_snapshot, team, player_name, player_number, player_out_name, player_out_number, points")
+          .eq("game_id", game.id)
+          .order("created_at", { ascending: true });
+
+        if (evData) {
+          // Reconstruct local GameEvent objects from DB rows for the EventLog
+          const reconstituted = evData.map((row: Record<string, unknown>) => ({
+            id: row.id as string,
+            period: row.period as number,
+            clockSnapshot: (row.clock_snapshot as string) ?? "",
+            team: (row.team as "A" | "B"),
+            player: { id: `${row.team}-${row.player_number}`, name: (row.player_name as string) ?? "", number: (row.player_number as string) ?? "" },
+            type: ({ "2pt": "2PT", "3pt": "3PT", "ft": "FT", "foul": "FOUL", "sub": "SUB" }[row.event_type as string] ?? row.event_type) as "2PT" | "3PT" | "FT" | "FOUL" | "SUB",
+            playerOut: row.player_out_number ? { id: `${row.team}-${row.player_out_number}`, name: (row.player_out_name as string) ?? "", number: (row.player_out_number as string) ?? "" } : undefined,
+            points: (row.points as number) ?? 0,
+          }));
+          setEvents(reconstituted);
+        }
+
+        // Jump straight to the live game screen
+        setPhase("live");
+        console.log("Resumed game:", game.id);
+      });
   }, [router]);
 
   // ── Clock tick ────────────────────────────────────────────────────────────
@@ -108,6 +168,19 @@ export default function GamePage() {
     }
     return () => { if (clockRef.current) clearInterval(clockRef.current); };
   }, [isRunning]);
+
+  // ── Block refresh/close when clock is running ─────────────────────────────
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = ""; // required for Chrome to show the dialog
+    };
+    if (isRunning) {
+      window.addEventListener("beforeunload", handleBeforeUnload);
+    }
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isRunning]);
+
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const flashError = useCallback((keepBuffer = false, msg?: string) => {
@@ -502,6 +575,7 @@ export default function GamePage() {
       window.alert(`Database Error: ${error.message}\n\nDid you forget to run the 00004 SQL migration? The game will not sync to the viewer until the database schema is updated.`);
     } else if (data) {
       gameIdRef.current = data.id;
+      localStorage.setItem("wirestats_active_game_id", data.id);
       console.log("Game created in Supabase:", data.id);
     }
   };
@@ -612,6 +686,7 @@ export default function GamePage() {
         }
       } else {
         setMatchEnded(true);
+        localStorage.removeItem("wirestats_active_game_id");
         // Mark game as finished in Supabase
         if (gameIdRef.current) {
           supabase.from("games").update({ status: "finished" })
@@ -622,6 +697,13 @@ export default function GamePage() {
     } else {
       setPeriod(p => p + 1);
       setClockSeconds(config.gameTimeMinutes * 60);
+      setFoulsA(0);
+      setFoulsB(0);
+      if (gameIdRef.current) {
+        supabase.from("games").update({ fouls_a: 0, fouls_b: 0 })
+          .eq("id", gameIdRef.current)
+          .then(({ error }) => { if (error) console.error("Foul reset sync error:", error); });
+      }
     }
   }, [config, period, scoreA, scoreB]);
 
