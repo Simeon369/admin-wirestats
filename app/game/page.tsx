@@ -38,6 +38,8 @@ export default function GamePage() {
   const [activeB, setActiveB] = useState<Player[]>([]);
   const [scoreA, setScoreA] = useState(0);
   const [scoreB, setScoreB] = useState(0);
+  const [foulsA, setFoulsA] = useState(0);
+  const [foulsB, setFoulsB] = useState(0);
   const [period, setPeriod] = useState(1);
   const [clockSeconds, setClockSeconds] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
@@ -172,6 +174,11 @@ export default function GamePage() {
     setEvents(prev => [...prev, event]);
     let newScoreA = scoreA;
     let newScoreB = scoreB;
+    let newFoulsA = foulsA;
+    let newFoulsB = foulsB;
+    let newActiveA = activeA;
+    let newActiveB = activeB;
+
     if (event.type === "2PT") {
       event.team === "A" ? setScoreA(s => { newScoreA = s + 2; return newScoreA; }) : setScoreB(s => { newScoreB = s + 2; return newScoreB; });
       event.team === "A" ? (newScoreA = scoreA + 2) : (newScoreB = scoreB + 2);
@@ -181,13 +188,18 @@ export default function GamePage() {
     } else if (event.type === "FT") {
       event.team === "A" ? setScoreA(s => { newScoreA = s + 1; return newScoreA; }) : setScoreB(s => { newScoreB = s + 1; return newScoreB; });
       event.team === "A" ? (newScoreA = scoreA + 1) : (newScoreB = scoreB + 1);
+    } else if (event.type === "FOUL") {
+      if (event.team === "A") { setFoulsA(f => { newFoulsA = f + 1; return newFoulsA; }); newFoulsA = foulsA + 1; }
+      else { setFoulsB(f => { newFoulsB = f + 1; return newFoulsB; }); newFoulsB = foulsB + 1; }
     } else if (event.type === "SUB" && event.playerOut) {
       const inPlayer = event.player;
       const outPlayer = event.playerOut;
       if (event.team === "A") {
-        setActiveA(prev => prev.map(p => p.id === outPlayer.id ? inPlayer : p));
+        newActiveA = activeA.map(p => p.id === outPlayer.id ? inPlayer : p);
+        setActiveA(newActiveA);
       } else {
-        setActiveB(prev => prev.map(p => p.id === outPlayer.id ? inPlayer : p));
+        newActiveB = activeB.map(p => p.id === outPlayer.id ? inPlayer : p);
+        setActiveB(newActiveB);
       }
     }
     setBufferPhase({ phase: "idle" });
@@ -211,15 +223,24 @@ export default function GamePage() {
         player_out_number: event.playerOut?.number ?? null,
       }).then(({ error }) => { if (error) console.error("Event sync error:", error); });
 
+      const newBenchA = configRef.current?.teamA.players.filter(p => !newActiveA.some(a => a.id === p.id)) ?? [];
+      const newBenchB = configRef.current?.teamB.players.filter(p => !newActiveB.some(a => a.id === p.id)) ?? [];
+
       // Update score in games table
       supabase.from("games").update({
         score_a: newScoreA,
         score_b: newScoreB,
+        fouls_a: newFoulsA,
+        fouls_b: newFoulsB,
+        roster_active_a: newActiveA,
+        roster_active_b: newActiveB,
+        roster_bench_a: newBenchA,
+        roster_bench_b: newBenchB,
       }).eq("id", gameIdRef.current)
         .then(({ error }) => { if (error) console.error("Score sync error:", error); });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scoreA, scoreB]);
+  }, [scoreA, scoreB, foulsA, foulsB, activeA, activeB]);
 
   // ── Keyboard engine ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -455,6 +476,8 @@ export default function GamePage() {
     }
 
     // Create game row in Supabase
+    const initialBenchA = cfg.teamA.players.filter(p => !startingA.some(s => s.id === p.id));
+    const initialBenchB = cfg.teamB.players.filter(p => !startingB.some(s => s.id === p.id));
     const { data, error } = await supabase.from("games").insert({
       status: "active",
       team_a_name: cfg.teamA.name,
@@ -463,6 +486,12 @@ export default function GamePage() {
       team_b_color: cfg.teamB.colorHex,
       score_a: 0,
       score_b: 0,
+      fouls_a: 0,
+      fouls_b: 0,
+      roster_active_a: startingA,
+      roster_active_b: startingB,
+      roster_bench_a: initialBenchA,
+      roster_bench_b: initialBenchB,
       period: 1,
       clock_seconds: cfg.gameTimeMinutes * 60,
       is_running: false,
