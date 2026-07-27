@@ -18,7 +18,9 @@ import { BufferDisplay, BufferState } from "@/components/game/BufferDisplay";
 import { EventLog } from "@/components/game/EventLog";
 import { UndoModal } from "@/components/game/UndoModal";
 import { InstructionsModal } from "@/components/game/InstructionsModal";
+import { EndGameModal } from "@/components/game/EndGameModal";
 import { supabase } from "@/lib/supabase";
+import { enqueue, flushQueue, getQueueLength } from "@/lib/offlineQueue";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Buffer parsing types moved to lib/gameState.ts
@@ -60,11 +62,35 @@ export default function GamePage() {
 
   // ── Match Ended modal ─────────────────────────────────────────────────────
   const [matchEnded, setMatchEnded] = useState(false);
+  const [showEndGameModal, setShowEndGameModal] = useState(false);
+
+  // ── Network & Offline Queue ───────────────────────────────────────────────
+  const [isOffline, setIsOffline] = useState(false);
+  const [queueLength, setQueueLength] = useState(0);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       const hide = localStorage.getItem("hideInstructions") === "true";
       setHideInstructionsForever(hide);
+
+      // Init network state
+      setIsOffline(!navigator.onLine);
+      setQueueLength(getQueueLength());
+
+      const handleOnline = () => {
+        setIsOffline(false);
+        if (supabase) {
+          flushQueue(supabase).then(() => setQueueLength(getQueueLength()));
+        }
+      };
+      const handleOffline = () => setIsOffline(true);
+
+      window.addEventListener("online", handleOnline);
+      window.addEventListener("offline", handleOffline);
+      return () => {
+        window.removeEventListener("online", handleOnline);
+        window.removeEventListener("offline", handleOffline);
+      };
     }
   }, []);
 
@@ -76,6 +102,16 @@ export default function GamePage() {
     setShowInstructions(false);
   };
 
+  const handleEndGame = async () => {
+    if (gameIdRef.current && supabase) {
+      // Mark game as finished in Supabase
+      supabase.from("games").update({ status: "finished" }).eq("id", gameIdRef.current).then();
+    }
+    // Clear active game
+    localStorage.removeItem("wirestats_active_game_id");
+    router.push("/");
+  };
+
   const clockRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const configRef = useRef<MatchConfig | null>(null);
   const gameIdRef = useRef<string | null>(null);  // Supabase game row ID
@@ -83,29 +119,58 @@ export default function GamePage() {
 
   // ── Load config + resume ongoing game ─────────────────────────────────────
   useEffect(() => {
-    const cfg = loadMatchConfig();
-    if (!cfg) { router.push("/"); return; }
-    setConfig(cfg);
-    configRef.current = cfg;
-    setClockSeconds(cfg.gameTimeMinutes * 60);
+    if (!supabase) return;
 
-    // Check if there's an ongoing game session to resume
-    const savedGameId = localStorage.getItem("wirestats_active_game_id");
-    if (!savedGameId || !supabase) return;
-
-    // Try to resume the saved game
+    // Try to resume the active game directly from the database
     supabase
       .from("games")
       .select("*")
-      .eq("id", savedGameId)
       .eq("status", "active")
-      .single()
+      .limit(1)
+      .maybeSingle()
       .then(async ({ data: game, error }) => {
+        let cfg = loadMatchConfig();
+
         if (error || !game) {
-          // Game not found or already finished — clear the stale key
-          localStorage.removeItem("wirestats_active_game_id");
+          // Game not found or already finished
+          if (!cfg) {
+            router.push("/");
+            return;
+          }
+          // No active game, but we have config to start a new one
+          setConfig(cfg);
+          configRef.current = cfg;
+          setClockSeconds(cfg.gameTimeMinutes * 60);
           return;
         }
+
+        // Active game exists!
+        // Reconstruct config from DB if it was lost (e.g. new tab or cleared session storage)
+        if (!cfg) {
+          cfg = {
+            teamA: {
+              name: game.team_a_name ?? "Team A",
+              colorHex: game.team_a_color ?? "#ef4444",
+              colorId: game.team_a_color === '#3b82f6' ? 'blue' : 'red',
+              players: [...(game.roster_active_a ?? []), ...(game.roster_bench_a ?? [])] as Player[],
+            },
+            teamB: {
+              name: game.team_b_name ?? "Team B",
+              colorHex: game.team_b_color ?? "#3b82f6",
+              colorId: game.team_b_color === '#ef4444' ? 'red' : 'blue',
+              players: [...(game.roster_active_b ?? []), ...(game.roster_bench_b ?? [])] as Player[],
+            },
+            gameTimeMinutes: game.game_time_minutes ?? 10,
+            periods: game.periods ?? "4 quarters",
+            totalPeriods: game.total_periods ?? 4,
+          };
+        }
+
+        setConfig(cfg);
+        configRef.current = cfg;
+
+        // Set the active game id in local storage for other checks if needed, though we rely on db
+        localStorage.setItem("wirestats_active_game_id", game.id);
 
         // Restore all game state from the database row
         gameIdRef.current = game.id;
@@ -283,7 +348,7 @@ export default function GamePage() {
       const eventTypeMap: Record<string, string> = {
         "2PT": "2pt", "3PT": "3pt", "FT": "ft", "FOUL": "foul", "SUB": "sub"
       };
-      supabase.from("stat_events").insert({
+      const eventPayload = {
         game_id: gameIdRef.current,
         event_type: eventTypeMap[event.type] ?? event.type.toLowerCase(),
         points: event.points ?? 0,
@@ -294,13 +359,24 @@ export default function GamePage() {
         player_number: event.player.number,
         player_out_name: event.playerOut?.name ?? null,
         player_out_number: event.playerOut?.number ?? null,
-      }).then(({ error }) => { if (error) console.error("Event sync error:", error); });
+      };
+
+      supabase.from("stat_events").insert(eventPayload).then(({ error }) => {
+        if (error) {
+          console.error("Event sync error (queueing):", error);
+          enqueue({ type: "insert_event", payload: eventPayload });
+          setQueueLength(getQueueLength());
+        }
+      }).catch(err => {
+        console.error("Event sync exception (queueing):", err);
+        enqueue({ type: "insert_event", payload: eventPayload });
+        setQueueLength(getQueueLength());
+      });
 
       const newBenchA = configRef.current?.teamA.players.filter(p => !newActiveA.some(a => a.id === p.id)) ?? [];
       const newBenchB = configRef.current?.teamB.players.filter(p => !newActiveB.some(a => a.id === p.id)) ?? [];
 
-      // Update score in games table
-      supabase.from("games").update({
+      const updatePayload = {
         score_a: newScoreA,
         score_b: newScoreB,
         fouls_a: newFoulsA,
@@ -309,8 +385,21 @@ export default function GamePage() {
         roster_active_b: newActiveB,
         roster_bench_a: newBenchA,
         roster_bench_b: newBenchB,
-      }).eq("id", gameIdRef.current)
-        .then(({ error }) => { if (error) console.error("Score sync error:", error); });
+      };
+
+      // Update score in games table
+      supabase.from("games").update(updatePayload).eq("id", gameIdRef.current)
+        .then(({ error }) => {
+          if (error) {
+            console.error("Score sync error (queueing):", error);
+            enqueue({ type: "update_game", payload: updatePayload, gameId: gameIdRef.current! });
+            setQueueLength(getQueueLength());
+          }
+        }).catch(err => {
+          console.error("Score sync exception (queueing):", err);
+          enqueue({ type: "update_game", payload: updatePayload, gameId: gameIdRef.current! });
+          setQueueLength(getQueueLength());
+        });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scoreA, scoreB, foulsA, foulsB, activeA, activeB]);
@@ -568,6 +657,9 @@ export default function GamePage() {
       period: 1,
       clock_seconds: cfg.gameTimeMinutes * 60,
       is_running: false,
+      game_time_minutes: cfg.gameTimeMinutes,
+      periods: cfg.periods,
+      total_periods: cfg.totalPeriods,
     }).select("id").single();
 
     if (error) {
@@ -800,6 +892,17 @@ export default function GamePage() {
             <span className="font-nunito text-sm font-bold text-slate-400 uppercase tracking-widest">
               {config.periods} · {config.gameTimeMinutes} min
             </span>
+            {isOffline && (
+              <span className="font-nunito text-sm font-bold text-red-400 border border-red-900 px-3 py-1 flex items-center gap-2">
+                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                Offline {queueLength > 0 ? `(${queueLength})` : ""}
+              </span>
+            )}
+            {!isOffline && queueLength > 0 && (
+              <span className="font-nunito text-sm font-bold text-yellow-400 border border-yellow-900 px-3 py-1 animate-pulse">
+                Syncing {queueLength}...
+              </span>
+            )}
             <button
               onClick={() => setShowInstructions(true)}
               className="font-nunito text-sm font-bold text-slate-400 border border-slate-600 px-3 py-1 hover:text-white hover:border-slate-400 transition-colors"
@@ -811,6 +914,12 @@ export default function GamePage() {
               className="font-nunito text-sm font-bold text-slate-400 border border-slate-600 px-3 py-1 hover:text-white hover:border-slate-400 transition-colors"
             >
               ← Exit
+            </button>
+            <button
+              onClick={() => setShowEndGameModal(true)}
+              className="font-nunito text-sm font-bold text-red-400 border border-red-900 bg-red-950/30 px-3 py-1 hover:text-white hover:bg-red-900 hover:border-red-500 transition-colors"
+            >
+              End Game
             </button>
           </div>
         </header>
@@ -876,7 +985,7 @@ export default function GamePage() {
         </div>
       </div>
 
-      {/* Undo modal */}
+      {/* Modals */}
       {undoTarget && (
         <UndoModal
           event={undoTarget}
@@ -886,9 +995,15 @@ export default function GamePage() {
         />
       )}
 
-      {/* Instructions Modal */}
       {showInstructions && (
         <InstructionsModal onClose={closeInstructions} />
+      )}
+
+      {showEndGameModal && (
+        <EndGameModal
+          onConfirm={handleEndGame}
+          onCancel={() => setShowEndGameModal(false)}
+        />
       )}
 
       {/* End Match Modal */}
@@ -898,7 +1013,6 @@ export default function GamePage() {
             <h2 className="font-fredoka text-5xl font-black uppercase tracking-widest text-slate-900">
               Match Ended
             </h2>
-            
             <div className="flex items-center justify-between gap-4 py-6 border-y-4 border-slate-100">
               <div className="flex flex-col items-center flex-1">
                 <span className="font-fredoka text-xl font-black uppercase truncate w-full" style={{ color: config.teamA.colorHex }}>{config.teamA.name}</span>

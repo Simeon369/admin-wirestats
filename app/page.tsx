@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ChunkyButton } from "@/components/ui/ChunkyButton";
 import { ChunkyInput } from "@/components/ui/ChunkyInput";
@@ -8,12 +8,30 @@ import { ChunkySelect } from "@/components/ui/ChunkySelect";
 import { ColorPicker, TEAM_COLORS } from "@/components/ui/ColorPicker";
 import { Jersey } from "@/components/ui/Jersey";
 import { saveMatchConfig } from "@/lib/gameState";
+import { supabase } from "@/lib/supabase";
 
 type Player = { id: string; name: string; number: string };
 type Team = { name: string; colorId: string; players: Player[] };
 
 export default function MatchCreationDashboard() {
   const router = useRouter();
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && supabase) {
+      supabase
+        .from("games")
+        .select("id")
+        .eq("status", "active")
+        .limit(1)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data && data.id) {
+            localStorage.setItem("wirestats_active_game_id", data.id);
+            router.push("/game");
+          }
+        });
+    }
+  }, [router]);
   const [teamA, setTeamA] = useState<Team>({ name: "", colorId: "red", players: [] });
   const [teamB, setTeamB] = useState<Team>({ name: "", colorId: "blue", players: [] });
   const [gameTime, setGameTime] = useState("10");
