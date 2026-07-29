@@ -907,12 +907,12 @@ export default function GamePage() {
             >
               Instructions
             </button>
-            <button
+            {/* <button
               onClick={() => router.push("/")}
               className="font-nunito text-sm font-bold text-slate-400 border border-slate-600 px-3 py-1 hover:text-white hover:border-slate-400 transition-colors"
             >
               ← Exit
-            </button>
+            </button> */}
             <button
               onClick={() => setShowEndGameModal(true)}
               className="font-nunito text-sm font-bold text-red-400 border border-red-900 bg-red-950/30 px-3 py-1 hover:text-white hover:bg-red-900 hover:border-red-500 transition-colors"
