@@ -282,14 +282,13 @@ export default function GamePage() {
     switch (bufferPhase.phase) {
       case "idle": return "Type jersey #...";
       case "jersey": return "Press ← or → to pick team";
-      case "team": return "Press 2, 3, f (foul), or x (sub)";
+      case "team": return "Press 1 (FT), 2, 3, f (foul), or x (sub)";
       case "action":
         if (bufferPhase.action === "x") {
           const active = bufferPhase.team === "A" ? activeA : activeB;
           const isFirstActive = active.some(p => p.number === bufferPhase.jersey);
           return isFirstActive ? "Type incoming jersey #" : "Type outgoing jersey #";
         }
-        if (bufferPhase.action === "f") return "Enter = FOUL · T = Free Throw";
         return "Press Enter to commit";
       case "sub-out-jersey": return "Press Enter to commit sub";
       default: return "";
@@ -361,17 +360,20 @@ export default function GamePage() {
         player_out_number: event.playerOut?.number ?? null,
       };
 
-      supabase.from("stat_events").insert(eventPayload).then(({ error }) => {
-        if (error) {
-          console.error("Event sync error (queueing):", error);
+      supabase.from("stat_events").insert(eventPayload).then(
+        ({ error }) => {
+          if (error) {
+            console.error("Event sync error (queueing):", error);
+            enqueue({ type: "insert_event", payload: eventPayload });
+            setQueueLength(getQueueLength());
+          }
+        },
+        (err) => {
+          console.error("Event sync exception (queueing):", err);
           enqueue({ type: "insert_event", payload: eventPayload });
           setQueueLength(getQueueLength());
         }
-      }).catch(err => {
-        console.error("Event sync exception (queueing):", err);
-        enqueue({ type: "insert_event", payload: eventPayload });
-        setQueueLength(getQueueLength());
-      });
+      );
 
       const newBenchA = configRef.current?.teamA.players.filter(p => !newActiveA.some(a => a.id === p.id)) ?? [];
       const newBenchB = configRef.current?.teamB.players.filter(p => !newActiveB.some(a => a.id === p.id)) ?? [];
@@ -388,18 +390,20 @@ export default function GamePage() {
       };
 
       // Update score in games table
-      supabase.from("games").update(updatePayload).eq("id", gameIdRef.current)
-        .then(({ error }) => {
+      supabase.from("games").update(updatePayload).eq("id", gameIdRef.current).then(
+        ({ error }) => {
           if (error) {
             console.error("Score sync error (queueing):", error);
             enqueue({ type: "update_game", payload: updatePayload, gameId: gameIdRef.current! });
             setQueueLength(getQueueLength());
           }
-        }).catch(err => {
+        },
+        (err) => {
           console.error("Score sync exception (queueing):", err);
           enqueue({ type: "update_game", payload: updatePayload, gameId: gameIdRef.current! });
           setQueueLength(getQueueLength());
-        });
+        }
+      );
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scoreA, scoreB, foulsA, foulsB, activeA, activeB]);
@@ -566,15 +570,9 @@ export default function GamePage() {
       }
 
       // ── Action keys (only valid in team phase) ────────────────────────────
-      if (bufferPhase.phase === "team" && (key === "2" || key === "3" || key.toLowerCase() === "f" || key.toLowerCase() === "x")) {
-        const action = key === "2" ? "2" : key === "3" ? "3" : key.toLowerCase() === "f" ? "f" : "x";
+      if (bufferPhase.phase === "team" && (key === "1" || key === "2" || key === "3" || key.toLowerCase() === "f" || key.toLowerCase() === "x")) {
+        const action = key === "1" ? "ft" : key === "2" ? "2" : key === "3" ? "3" : key.toLowerCase() === "f" ? "f" : "x";
         setBufferPhase({ phase: "action", jersey: bufferPhase.jersey, team: bufferPhase.team, action: action as "2" | "3" | "f" | "ft" | "x" });
-        return;
-      }
-
-      // ── T key: promote foul → free throw ─────────────────────────────────
-      if (key.toLowerCase() === "t" && bufferPhase.phase === "action" && bufferPhase.action === "f") {
-        setBufferPhase({ phase: "action", jersey: bufferPhase.jersey, team: bufferPhase.team, action: "ft" });
         return;
       }
 

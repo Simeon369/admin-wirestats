@@ -3,9 +3,11 @@
 // When a network call fails, the payload is saved to localStorage.
 // When connectivity is restored, the queue is flushed in insertion order.
 
-export type QueuedOperation =
-  | { id: string; type: "insert_event"; payload: Record<string, unknown>; timestamp: string }
-  | { id: string; type: "update_game"; payload: Record<string, unknown>; gameId: string; timestamp: string };
+export type EnqueueOperation =
+  | { type: "insert_event"; payload: Record<string, unknown> }
+  | { type: "update_game"; payload: Record<string, unknown>; gameId: string };
+
+export type QueuedOperation = EnqueueOperation & { id: string; timestamp: string };
 
 const QUEUE_KEY = "wirestats_offline_queue";
 
@@ -27,7 +29,7 @@ function writeQueue(queue: QueuedOperation[]): void {
   }
 }
 
-export function enqueue(op: Omit<QueuedOperation, "id" | "timestamp">): void {
+export function enqueue(op: EnqueueOperation): void {
   const queue = readQueue();
   const item = {
     ...op,

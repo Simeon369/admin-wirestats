@@ -76,7 +76,7 @@ export function BufferDisplay({ bufferPhase, state, config, activeA, activeB, hi
         {action === "2" && <span className="text-xl font-black text-orange-500" style={{ textShadow: "2px 2px 0 #000" }}>🏀2</span>}
         {action === "3" && <span className="text-xl font-black text-orange-500" style={{ textShadow: "2px 2px 0 #000" }}>🏀3</span>}
         {action === "f" && <span className="text-xl font-black text-red-500" style={{ textShadow: "2px 2px 0 #000" }}>🚨</span>}
-        {action === "1" && <span className="text-xl font-black text-[#65d421]" style={{ textShadow: "2px 2px 0 #000" }}>🏀1</span>}
+        {action === "ft" && <span className="text-xl font-black text-[#65d421]" style={{ textShadow: "2px 2px 0 #000" }}>🏀1</span>}
         {action === "x" && <span className="text-xl font-black text-blue-500" style={{ textShadow: "2px 2px 0 #000" }}>🔄</span>}
       </div>
     );
