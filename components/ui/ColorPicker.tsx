@@ -26,7 +26,7 @@ export function ColorPicker({ label, selectedColorId, onChange, className = '' }
   return (
     <div className={`flex flex-col gap-2 ${className}`}>
       {label && (
-        <label className="font-fredoka font-medium text-slate-900 tracking-wide text-lg">
+        <label className="font-fredoka font-medium text-white tracking-wide text-lg">
           {label}
         </label>
       )}

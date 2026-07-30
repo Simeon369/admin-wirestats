@@ -1,19 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ChunkyButton } from "@/components/ui/ChunkyButton";
-import { ChunkyInput } from "@/components/ui/ChunkyInput";
-import { ChunkySelect } from "@/components/ui/ChunkySelect";
-import { ColorPicker, TEAM_COLORS } from "@/components/ui/ColorPicker";
-import { Jersey } from "@/components/ui/Jersey";
-import { saveMatchConfig } from "@/lib/gameState";
 import { supabase } from "@/lib/supabase";
 
-type Player = { id: string; name: string; number: string };
-type Team = { name: string; colorId: string; players: Player[] };
-
-export default function MatchCreationDashboard() {
+export default function AdminDashboard() {
   const router = useRouter();
 
   useEffect(() => {
@@ -32,277 +24,69 @@ export default function MatchCreationDashboard() {
         });
     }
   }, [router]);
-  const [teamA, setTeamA] = useState<Team>({ name: "", colorId: "red", players: [] });
-  const [teamB, setTeamB] = useState<Team>({ name: "", colorId: "blue", players: [] });
-  const [gameTime, setGameTime] = useState("10");
-  const [customGameTime, setCustomGameTime] = useState("");
-  const [periods, setPeriods] = useState("4 quarters");
-
-  const [newPlayerA, setNewPlayerA] = useState({ name: "", number: "" });
-  const [newPlayerB, setNewPlayerB] = useState({ name: "", number: "" });
-  const [dupErrorA, setDupErrorA] = useState(false);
-  const [dupErrorB, setDupErrorB] = useState(false);
-
-  const numRefA = useRef<HTMLInputElement>(null);
-  const nameRefA = useRef<HTMLInputElement>(null);
-  const numRefB = useRef<HTMLInputElement>(null);
-  const nameRefB = useRef<HTMLInputElement>(null);
-
-  const handleAddPlayer = (team: "A" | "B") => {
-    if (team === "A") {
-      if (!newPlayerA.name || !newPlayerA.number) return;
-      if (teamA.players.some(p => p.number === newPlayerA.number)) {
-        setDupErrorA(true);
-        return;
-      }
-      setDupErrorA(false);
-      setTeamA({ ...teamA, players: [...teamA.players, { id: crypto.randomUUID(), ...newPlayerA }] });
-      setNewPlayerA({ name: "", number: "" });
-      setTimeout(() => numRefA.current?.focus(), 10);
-    } else {
-      if (!newPlayerB.name || !newPlayerB.number) return;
-      if (teamB.players.some(p => p.number === newPlayerB.number)) {
-        setDupErrorB(true);
-        return;
-      }
-      setDupErrorB(false);
-      setTeamB({ ...teamB, players: [...teamB.players, { id: crypto.randomUUID(), ...newPlayerB }] });
-      setNewPlayerB({ name: "", number: "" });
-      setTimeout(() => numRefB.current?.focus(), 10);
-    }
-  };
-
-  const updatePlayer = (team: "A" | "B", id: string, field: "name" | "number", value: string) => {
-    const updateFn = (t: Team) => ({
-      ...t,
-      players: t.players.map(p => p.id === id ? { ...p, [field]: value } : p)
-    });
-    team === "A" ? setTeamA(updateFn(teamA)) : setTeamB(updateFn(teamB));
-  };
-
-  const removePlayer = (team: "A" | "B", id: string) => {
-    const filterFn = (t: Team) => ({
-      ...t,
-      players: t.players.filter(p => p.id !== id)
-    });
-    team === "A" ? setTeamA(filterFn(teamA)) : setTeamB(filterFn(teamB));
-  };
-
-  const handleStartMatch = () => {
-    const finalGameTime = parseInt(gameTime === "custom" ? customGameTime : gameTime, 10) || 10;
-    const totalPeriods = periods === "4 quarters" ? 4 : 2;
-
-    const buildTeam = (team: Team) => ({
-      ...team,
-      colorHex: TEAM_COLORS.find(c => c.id === team.colorId)?.hex ?? '#ccc',
-    });
-
-    saveMatchConfig({
-      teamA: buildTeam(teamA),
-      teamB: buildTeam(teamB),
-      gameTimeMinutes: finalGameTime,
-      periods,
-      totalPeriods,
-    });
-
-    router.push('/game');
-  };
-
-  const validationErrors: string[] = [];
-  if (!teamA.name.trim()) validationErrors.push("Team A needs a name");
-  if (!teamB.name.trim()) validationErrors.push("Team B needs a name");
-  if (teamA.players.length < 5) validationErrors.push(`Team A needs ${5 - teamA.players.length} more player(s)`);
-  if (teamB.players.length < 5) validationErrors.push(`Team B needs ${5 - teamB.players.length} more player(s)`);
-  const canStart = validationErrors.length === 0;
-
-  const renderTeamSection = (team: "A" | "B", teamData: Team, setTeamData: (t: Team) => void) => (
-    <div className="flex flex-col gap-6 p-6 border-4 border-slate-900 bg-white shadow-[8px_8px_0px_0px_rgba(15,23,42,1)]">
-      <h2 className="font-fredoka text-3xl uppercase tracking-wider text-slate-900">
-        Team {team}
-      </h2>
-      
-      <ChunkyInput
-        label="Team Name"
-        placeholder="e.g. Wildcats"
-        value={teamData.name}
-        onChange={(e) => {
-          const val = e.target.value.replace(/\b\w/g, (c) => c.toUpperCase());
-          setTeamData({ ...teamData, name: val });
-        }}
-        fullWidth
-      />
-
-      <ColorPicker
-        label="Team Color"
-        selectedColorId={teamData.colorId}
-        onChange={(colorId) => setTeamData({ ...teamData, colorId })}
-      />
-
-      <div className="mt-4 border-t-4 border-slate-900 pt-4">
-        <h3 className="font-fredoka text-2xl uppercase text-slate-900 mb-3">Roster</h3>
-
-        {(team === "A" ? dupErrorA : dupErrorB) && (
-          <p className="font-nunito text-sm font-bold text-red-600">⚠ Jersey No. already taken</p>
-        )}
-        <div className="flex items-center gap-2 mb-6">
-          <ChunkyInput
-            ref={team === "A" ? numRefA : numRefB}
-            placeholder="#"
-            className="w-16 text-center h-[56px]"
-            value={team === "A" ? newPlayerA.number : newPlayerB.number}
-            error={team === "A" ? (dupErrorA ? "" : undefined) : (dupErrorB ? "" : undefined)}
-            onChange={(e) => {
-              const val = e.target.value.replace(/\D/g, '');
-              if (team === "A") { setDupErrorA(false); setNewPlayerA({ ...newPlayerA, number: val }); }
-              else { setDupErrorB(false); setNewPlayerB({ ...newPlayerB, number: val }); }
-            }}
-            onKeyDown={(e) => {
-              if (/^[a-zA-Z]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                e.preventDefault();
-                const nameRef = team === "A" ? nameRefA : nameRefB;
-                const setter = team === "A" ? setNewPlayerA : setNewPlayerB;
-                const playerState = team === "A" ? newPlayerA : newPlayerB;
-                nameRef.current?.focus();
-                setter({ ...playerState, name: playerState.name + e.key.toUpperCase() });
-              } else if (e.key === "Enter") {
-                e.preventDefault();
-                handleAddPlayer(team);
-              }
-            }}
-          />
-          <ChunkyInput
-            ref={team === "A" ? nameRefA : nameRefB}
-            placeholder="Player Name"
-            className="flex-1 h-[56px]"
-            value={team === "A" ? newPlayerA.name : newPlayerB.name}
-            onChange={(e) => {
-              const val = e.target.value.replace(/[0-9]/g, '').replace(/\b\w/g, (c) => c.toUpperCase());
-              team === "A" ? setNewPlayerA({ ...newPlayerA, name: val }) : setNewPlayerB({ ...newPlayerB, name: val });
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleAddPlayer(team);
-              }
-            }}
-          />
-          <ChunkyButton size="md" variant="primary" className="h-[56px]" onClick={() => handleAddPlayer(team)}>
-            ADD
-          </ChunkyButton>
-        </div>
-
-        {teamData.players.length === 0 ? (
-          <p className="text-slate-500 font-nunito italic mb-4">No players added yet.</p>
-        ) : (
-          <div className="grid grid-cols-5 gap-3">
-            {[...teamData.players].sort((a, b) => parseInt(a.number || '0') - parseInt(b.number || '0')).map((player) => {
-              const colorHex = TEAM_COLORS.find(c => c.id === teamData.colorId)?.hex || '#ccc';
-              return (
-                <Jersey
-                  key={player.id}
-                  number={player.number}
-                  name={player.name}
-                  colorHex={colorHex}
-                  size="md"
-                  onRemove={() => removePlayer(team, player.id)}
-                />
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-slate-900 p-8 pb-20">
       <div className="max-w-5xl mx-auto flex flex-col gap-8">
-        <header className="border-b-4 border-slate-700 pb-6 mb-4 flex items-end gap-2">
-          <h1 className="font-fredoka text-6xl font-black tracking-widest text-white">
-            Wire<span 
-              className="text-[#65d421] ml-2"
-              style={{
-                textShadow: "1px 1px 0 #1b630a, 2px 2px 0 #1b630a, 3px 3px 0 #1b630a, 4px 4px 0 #1b630a, -1px -1px 0 #1b630a, 1px -1px 0 #1b630a, -1px 1px 0 #1b630a",
-                WebkitTextStroke: "1px #1b630a"
-              }}
-            >
-              Stats
-            </span>
-          </h1>
-          <p className="font-nunito text-xl mb-1 ml-4 text-slate-400 font-bold uppercase tracking-wider">
-            Match Creation
-          </p>
+        <header className="border-b-4 border-slate-700 pb-6 mb-4 flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div className="flex items-end gap-2">
+            <h1 className="font-fredoka text-6xl font-black tracking-widest text-white">
+              Wire<span 
+                className="text-[#65d421] ml-2"
+                style={{
+                  textShadow: "1px 1px 0 #1b630a, 2px 2px 0 #1b630a, 3px 3px 0 #1b630a, 4px 4px 0 #1b630a, -1px -1px 0 #1b630a, 1px -1px 0 #1b630a, -1px 1px 0 #1b630a",
+                  WebkitTextStroke: "1px #1b630a"
+                }}
+              >
+                Stats
+              </span>
+            </h1>
+            <p className="font-nunito text-xl mb-1 ml-4 text-slate-400 font-bold uppercase tracking-wider">
+              Control Center
+            </p>
+          </div>
         </header>
 
-        <div className="grid md:grid-cols-2 gap-8">
-          {renderTeamSection("A", teamA, setTeamA)}
-          {renderTeamSection("B", teamB, setTeamB)}
-        </div>
-
-        <div className="flex flex-col gap-6 p-6 border-4 border-slate-900 bg-white shadow-[8px_8px_0px_0px_rgba(15,23,42,1)]">
-          <h2 className="font-fredoka text-3xl uppercase tracking-wider text-slate-900">
-            Game Settings
-          </h2>
-          <div className="grid md:grid-cols-2 gap-4 items-start">
-            <div className="flex flex-col gap-2">
-              <ChunkySelect
-                label="Game Time (Minutes per period)"
-                value={gameTime}
-                onChange={setGameTime}
-                options={[
-                  { value: "5", label: "5 Minutes" },
-                  { value: "10", label: "10 Minutes" },
-                  { value: "12", label: "12 Minutes" },
-                  { value: "15", label: "15 Minutes" },
-                  { value: "20", label: "20 Minutes" },
-                  { value: "custom", label: "Custom..." },
-                ]}
-                fullWidth
-                direction="up"
-              />
-              {gameTime === "custom" && (
-                <ChunkyInput
-                  type="number"
-                  placeholder="Enter custom minutes..."
-                  value={customGameTime}
-                  onChange={(e) => setCustomGameTime(e.target.value)}
-                  fullWidth
-                />
-              )}
+        <div className="grid md:grid-cols-3 gap-8 mt-8">
+          <Link href="/match/setup" className="group">
+            <div className="h-full flex flex-col items-center justify-center gap-6 p-8 border-4 border-slate-900 bg-white shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] transition-transform group-hover:-translate-y-2 group-hover:shadow-[12px_12px_0px_0px_rgba(15,23,42,1)] cursor-pointer">
+              <div className="w-20 h-20 bg-[#65d421] border-4 border-slate-900 flex items-center justify-center rounded-full text-slate-900 shadow-[4px_4px_0_#1b630a]">
+                <svg xmlns="http://www.w3.org/O/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-10 h-10">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+              </div>
+              <h2 className="font-fredoka text-2xl uppercase tracking-wider text-slate-900 font-bold text-center">
+                Create Match
+              </h2>
+              <p className="font-nunito text-slate-600 text-center font-bold">Spin up a single game session.</p>
             </div>
-            <ChunkySelect
-              label="Periods"
-              value={periods}
-              onChange={setPeriods}
-              options={[
-                { value: "4 quarters", label: "4 Quarters" },
-                { value: "2 halves", label: "2 Halves" },
-              ]}
-              fullWidth
-              direction="up"
-            />
-          </div>
-        </div>
+          </Link>
 
-        <div className="flex flex-col items-center gap-3 mt-8">
-          {!canStart && (
-            <ul className="flex flex-col items-center gap-1">
-              {validationErrors.map((err, i) => (
-                <li key={i} className="font-nunito text-sm font-semibold text-red-600 flex items-center gap-1">
-                  <span>⚠</span> {err}
-                </li>
-              ))}
-            </ul>
-          )}
-          <ChunkyButton
-            size="lg"
-            variant="primary"
-            onClick={handleStartMatch}
-            disabled={!canStart}
-            className={`px-16 text-3xl transition-opacity ${!canStart ? 'opacity-40 cursor-not-allowed active:translate-x-0 active:translate-y-0 active:shadow-[1px_1px_0_#1b630a,2px_2px_0_#1b630a,3px_3px_0_#1b630a,4px_4px_0_#1b630a,5px_5px_0_#1b630a,6px_6px_0_#1b630a]' : ''}`}
-          >
-            START MATCH
-          </ChunkyButton>
+          <Link href="/players" className="group">
+            <div className="h-full flex flex-col items-center justify-center gap-6 p-8 border-4 border-slate-900 bg-white shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] transition-transform group-hover:-translate-y-2 group-hover:shadow-[12px_12px_0px_0px_rgba(15,23,42,1)] cursor-pointer">
+              <div className="w-20 h-20 bg-[#3b82f6] border-4 border-slate-900 flex items-center justify-center rounded-full text-white shadow-[4px_4px_0_#1e3a8a]">
+                <svg xmlns="http://www.w3.org/O/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-10 h-10">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+                </svg>
+              </div>
+              <h2 className="font-fredoka text-2xl uppercase tracking-wider text-slate-900 font-bold text-center">
+                Register Player
+              </h2>
+              <p className="font-nunito text-slate-600 text-center font-bold">Manage global player profiles.</p>
+            </div>
+          </Link>
+
+          <div className="h-full flex flex-col items-center justify-center gap-6 p-8 border-4 border-slate-900 bg-slate-200 shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] opacity-70">
+            <div className="w-20 h-20 bg-slate-400 border-4 border-slate-900 flex items-center justify-center rounded-full text-slate-700 shadow-[4px_4px_0_#475569]">
+              <svg xmlns="http://www.w3.org/O/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-10 h-10">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.29 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" />
+              </svg>
+            </div>
+            <h2 className="font-fredoka text-2xl uppercase tracking-wider text-slate-900 font-bold text-center">
+              Create Tournament
+            </h2>
+            <p className="font-nunito text-slate-600 text-center font-bold">Coming Soon in V2</p>
+          </div>
         </div>
       </div>
     </div>

@@ -121,7 +121,7 @@ export function Jersey({
       {/* Name label */}
       {name !== undefined && (
         <span
-          className={`font-nunito font-bold text-slate-800 text-center leading-tight truncate w-full px-1 mt-1 ${s.name}`}
+          className={`font-nunito font-bold text-slate-300 text-center leading-tight truncate w-full px-1 mt-1 ${s.name}`}
         >
           {name}
         </span>
