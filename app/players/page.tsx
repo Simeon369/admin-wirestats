@@ -246,7 +246,8 @@ export default function PlayersManagement() {
   // Form state
   const [fullName, setFullName] = useState("");
   const [jerseyName, setJerseyName] = useState("");
-  const [position, setPosition] = useState("PG");
+  const [position, setPosition] = useState("");
+  const [formError, setFormError] = useState("");
 
   // Directory state
   const [search, setSearch] = useState("");
@@ -256,6 +257,7 @@ export default function PlayersManagement() {
   const [playerToDelete, setPlayerToDelete] = useState<GlobalPlayer | null>(null);
 
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const submitBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     fetchPlayers();
@@ -273,17 +275,38 @@ export default function PlayersManagement() {
   };
 
   const handleFullNameChange = (val: string) => {
-    setFullName(val);
-    const first = val.trim().split(" ")[0];
+    // Title case each word
+    const titleCased = val
+      .split(" ")
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+    
+    setFullName(titleCased);
+    setFormError("");
+    const first = titleCased.trim().split(" ")[0];
     setJerseyName(first ? first.toUpperCase() : "");
   };
 
-  const canRegister = fullName.trim().length > 0 && jerseyName.trim().length > 0;
-
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canRegister || saving) return;
+    if (saving) return;
+
+    if (!fullName.trim()) {
+      setFormError("Please enter the player's full name.");
+      return;
+    }
+    if (!jerseyName.trim()) {
+      setFormError("Please enter the player's jersey name.");
+      return;
+    }
+    if (!position) {
+      setFormError("Please select a position for the player.");
+      return;
+    }
+
     setSaving(true);
+    setFormError("");
+    
     const { data } = await supabase
       .from("players")
       .insert([{ full_name: fullName.trim(), jersey_name: jerseyName.trim(), position }])
@@ -292,7 +315,7 @@ export default function PlayersManagement() {
       setPlayers([data[0] as GlobalPlayer, ...players]);
       setFullName("");
       setJerseyName("");
-      setPosition("PG");
+      setPosition("");
       nameInputRef.current?.focus();
     }
     setSaving(false);
@@ -371,7 +394,10 @@ export default function PlayersManagement() {
                 type="text"
                 placeholder="SIMEON"
                 value={jerseyName}
-                onChange={e => setJerseyName(e.target.value.toUpperCase())}
+                onChange={e => {
+                  setJerseyName(e.target.value.toUpperCase());
+                  setFormError("");
+                }}
                 className="bg-slate-900 border-2 border-slate-600 focus:border-[#65d421] outline-none text-white font-nunito font-bold px-3 py-2.5 text-sm uppercase placeholder:text-slate-600 transition-colors"
               />
             </div>
@@ -384,7 +410,11 @@ export default function PlayersManagement() {
                 <button
                   key={pos}
                   type="button"
-                  onClick={() => setPosition(pos)}
+                  onClick={() => {
+                    setPosition(pos);
+                    setFormError("");
+                    submitBtnRef.current?.focus();
+                  }}
                   className={`font-fredoka text-sm font-black px-4 py-2 border-2 transition-all ${
                     position === pos
                       ? "bg-[#65d421] border-[#1b630a] text-slate-900 shadow-[2px_2px_0_#1b630a]"
@@ -397,11 +427,16 @@ export default function PlayersManagement() {
             </div>
           </div>
 
+          {formError && (
+            <p className="font-nunito text-sm font-bold text-red-400 mt-1">⚠ {formError}</p>
+          )}
+
           <button
+            ref={submitBtnRef}
             type="submit"
-            disabled={!canRegister || saving}
+            disabled={saving}
             className={`font-fredoka text-base font-black uppercase tracking-widest py-3 border-4 transition-all ${
-              canRegister && !saving
+              !saving
                 ? "bg-[#65d421] border-[#1b630a] text-slate-900 shadow-[4px_4px_0_#1b630a] hover:-translate-y-0.5 hover:shadow-[6px_6px_0_#1b630a] active:translate-y-0 active:shadow-[2px_2px_0_#1b630a]"
                 : "bg-slate-700 border-slate-600 text-slate-500 cursor-not-allowed"
             }`}
@@ -450,11 +485,11 @@ export default function PlayersManagement() {
           </div>
 
           {/* Context label */}
-          {!isSearching && !loading && players.length > 5 && (
-            <p className="font-nunito text-xs font-bold text-slate-600 uppercase tracking-widest">
-              Showing 5 most recent · Search to see all {players.length}
-            </p>
-          )}
+          {/* {!isSearching && !loading && players.length > 5 && (
+            // <p className="font-nunito text-xs font-bold text-slate-600 uppercase tracking-widest">
+            //   Showing 5 most recent · Search to see all {players.length}
+            // </p>
+          )} */}
           {isSearching && (
             <p className="font-nunito text-xs font-bold text-slate-500 uppercase tracking-widest">
               {filteredPlayers.length} result{filteredPlayers.length !== 1 ? "s" : ""}

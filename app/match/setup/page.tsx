@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ColorPicker, TEAM_COLORS } from "@/components/ui/ColorPicker";
@@ -14,19 +14,31 @@ type Team = { name: string; colorId: string; players: Player[] };
 
 const POSITIONS = ["PG", "SG", "SF", "PF", "C"];
 
+export type AutocompleteHandle = {
+  focusAndAppend: (char: string) => void;
+};
+
 // ── Player Autocomplete ──────────────────────────────────────────
-function PlayerAutocomplete({
-  globalPlayers,
-  onPlayerSelect,
-}: {
-  globalPlayers: GlobalPlayer[];
-  onPlayerSelect: (player: GlobalPlayer) => void;
-}) {
+const PlayerAutocomplete = forwardRef<
+  AutocompleteHandle,
+  {
+    globalPlayers: GlobalPlayer[];
+    onPlayerSelect: (player: GlobalPlayer) => void;
+  }
+>(({ globalPlayers, onPlayerSelect }, ref) => {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   
+  useImperativeHandle(ref, () => ({
+    focusAndAppend: (char: string) => {
+      setQuery(prev => prev + char);
+      inputRef.current?.focus();
+      setOpen(true);
+    }
+  }));
+
   const filtered = query.trim() === "" 
     ? [] 
     : globalPlayers.filter(p => p.full_name.toLowerCase().includes(query.toLowerCase()) || p.jersey_name.toLowerCase().includes(query.toLowerCase())).slice(0, 5);
@@ -93,7 +105,7 @@ function PlayerAutocomplete({
       )}
     </div>
   );
-}
+});
 
 
 export default function MatchSetup() {
@@ -114,12 +126,20 @@ export default function MatchSetup() {
   const [dupErrorA, setDupErrorA] = useState(false);
   const [dupErrorB, setDupErrorB] = useState(false);
 
+  const numInputARef = useRef<HTMLInputElement>(null);
+  const numInputBRef = useRef<HTMLInputElement>(null);
+  const autocompleteARef = useRef<AutocompleteHandle>(null);
+  const autocompleteBRef = useRef<AutocompleteHandle>(null);
+
   // Quick Register Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [qrFullName, setQrFullName] = useState("");
   const [qrJerseyName, setQrJerseyName] = useState("");
-  const [qrPosition, setQrPosition] = useState("PG");
+  const [qrPosition, setQrPosition] = useState("");
+  const [qrFormError, setQrFormError] = useState("");
   const [targetTeamForQR, setTargetTeamForQR] = useState<"A" | "B" | null>(null);
+  
+  const qrSubmitBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     fetchPlayers();
@@ -164,8 +184,11 @@ export default function MatchSetup() {
 
     if (team === "A") {
       setNewPlayerNumberA("");
+      // setTimeout to ensure it happens after React state updates clear the input and UI
+      setTimeout(() => numInputARef.current?.focus(), 10);
     } else {
       setNewPlayerNumberB("");
+      setTimeout(() => numInputBRef.current?.focus(), 10);
     }
   };
 
@@ -184,6 +207,12 @@ export default function MatchSetup() {
     const buildTeam = (team: Team) => ({
       ...team,
       colorHex: TEAM_COLORS.find(c => c.id === team.colorId)?.hex ?? '#ccc',
+      players: team.players.map(p => ({
+        id: p.id,
+        name: p.name,
+        number: p.number,
+        globalId: p.globalId,
+      })),
     });
 
     saveMatchConfig({
@@ -199,10 +228,23 @@ export default function MatchSetup() {
 
   const handleQuickRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!qrFullName || !qrJerseyName || !qrPosition) return;
+    if (!qrFullName.trim()) {
+      setQrFormError("Please enter the player's full name.");
+      return;
+    }
+    if (!qrJerseyName.trim()) {
+      setQrFormError("Please enter the player's jersey name.");
+      return;
+    }
+    if (!qrPosition) {
+      setQrFormError("Please select a position for the player.");
+      return;
+    }
+
+    setQrFormError("");
     
     const { data } = await supabase.from("players").insert([
-      { full_name: qrFullName, jersey_name: qrJerseyName, position: qrPosition }
+      { full_name: qrFullName.trim(), jersey_name: qrJerseyName.trim(), position: qrPosition }
     ]).select();
 
     if (data && data.length > 0) {
@@ -212,7 +254,7 @@ export default function MatchSetup() {
       setIsModalOpen(false);
       setQrFullName("");
       setQrJerseyName("");
-      setQrPosition("PG");
+      setQrPosition("");
     }
   };
 
@@ -261,17 +303,28 @@ export default function MatchSetup() {
         <div className="flex flex-col gap-2 mb-4">
           <div className="flex gap-2">
             <input
+              ref={team === "A" ? numInputARef : numInputBRef}
               type="text"
               placeholder="#"
               className="w-14 bg-slate-900 border-2 border-slate-600 focus:border-[#65d421] outline-none text-white font-nunito font-bold px-2 py-2 text-sm text-center placeholder:text-slate-600 transition-colors h-10"
               value={team === "A" ? newPlayerNumberA : newPlayerNumberB}
               onChange={(e) => {
-                const val = e.target.value.replace(/\D/g, '');
-                team === "A" ? setNewPlayerNumberA(val) : setNewPlayerNumberB(val);
+                const val = e.target.value;
+                const letters = val.replace(/[^a-zA-Z]/g, '');
+                const numbers = val.replace(/\D/g, '');
+                
+                team === "A" ? setNewPlayerNumberA(numbers) : setNewPlayerNumberB(numbers);
                 team === "A" ? setDupErrorA(false) : setDupErrorB(false);
+
+                if (letters.length > 0) {
+                  team === "A" 
+                    ? autocompleteARef.current?.focusAndAppend(letters)
+                    : autocompleteBRef.current?.focusAndAppend(letters);
+                }
               }}
             />
             <PlayerAutocomplete 
+              ref={team === "A" ? autocompleteARef : autocompleteBRef}
               globalPlayers={globalPlayers} 
               onPlayerSelect={(player) => handleAddPlayer(team, player)}
             />
@@ -425,8 +478,13 @@ export default function MatchSetup() {
                 value={qrFullName}
                 onChange={(e) => {
                   const val = e.target.value;
-                  setQrFullName(val);
-                  const first = val.trim().split(" ")[0];
+                  const titleCased = val
+                    .split(" ")
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                    .join(" ");
+                  setQrFullName(titleCased);
+                  setQrFormError("");
+                  const first = titleCased.trim().split(" ")[0];
                   setQrJerseyName(first ? first.toUpperCase() : "");
                 }}
                 className="bg-slate-900 border-2 border-slate-600 focus:border-[#65d421] outline-none text-white font-nunito font-bold px-3 py-2 text-sm transition-colors"
@@ -440,7 +498,10 @@ export default function MatchSetup() {
                 type="text"
                 placeholder="JOHN"
                 value={qrJerseyName}
-                onChange={(e) => setQrJerseyName(e.target.value.toUpperCase())}
+                onChange={(e) => {
+                  setQrJerseyName(e.target.value.toUpperCase());
+                  setQrFormError("");
+                }}
                 className="bg-slate-900 border-2 border-slate-600 focus:border-[#65d421] outline-none text-white font-nunito font-bold px-3 py-2 text-sm uppercase transition-colors"
               />
             </div>
@@ -452,7 +513,11 @@ export default function MatchSetup() {
                   <button
                     key={pos}
                     type="button"
-                    onClick={() => setQrPosition(pos)}
+                    onClick={() => {
+                      setQrPosition(pos);
+                      setQrFormError("");
+                      qrSubmitBtnRef.current?.focus();
+                    }}
                     className={`font-fredoka text-xs font-black px-2 py-1 border-2 transition-all ${
                       qrPosition === pos
                         ? "bg-[#65d421] border-[#1b630a] text-slate-900"
@@ -465,6 +530,10 @@ export default function MatchSetup() {
               </div>
             </div>
 
+            {qrFormError && (
+              <p className="font-nunito text-sm font-bold text-red-400 mt-1 mb-1">⚠ {qrFormError}</p>
+            )}
+
             <div className="flex gap-2 mt-2">
               <button 
                 type="button" 
@@ -474,9 +543,9 @@ export default function MatchSetup() {
                 Cancel
               </button>
               <button 
+                ref={qrSubmitBtnRef}
                 type="submit" 
-                disabled={!qrFullName || !qrJerseyName}
-                className="flex-1 font-fredoka text-sm font-black uppercase tracking-widest py-2 border-2 bg-[#65d421] border-[#1b630a] text-slate-900 hover:-translate-y-px transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex-1 font-fredoka text-sm font-black uppercase tracking-widest py-2 border-2 bg-[#65d421] border-[#1b630a] text-slate-900 hover:-translate-y-px transition-all"
               >
                 Register
               </button>

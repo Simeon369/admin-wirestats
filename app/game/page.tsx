@@ -667,6 +667,40 @@ export default function GamePage() {
       gameIdRef.current = data.id;
       localStorage.setItem("wirestats_active_game_id", data.id);
       console.log("Game created in Supabase:", data.id);
+
+      // ── Populate game_rosters so player_stats_summary can aggregate stats ──
+      const startingAIds = new Set(startingA.map(p => p.id));
+      const startingBIds = new Set(startingB.map(p => p.id));
+
+      const rosterRows = [
+        ...cfg.teamA.players
+          .filter(p => p.globalId)
+          .map(p => ({
+            game_id: data.id,
+            player_id: p.globalId,
+            team: "A",
+            jersey_number: parseInt(p.number, 10),
+            is_starting_five: startingAIds.has(p.id),
+          })),
+        ...cfg.teamB.players
+          .filter(p => p.globalId)
+          .map(p => ({
+            game_id: data.id,
+            player_id: p.globalId,
+            team: "B",
+            jersey_number: parseInt(p.number, 10),
+            is_starting_five: startingBIds.has(p.id),
+          })),
+      ];
+
+      if (rosterRows.length > 0) {
+        const { error: rosterError } = await supabase.from("game_rosters").insert(rosterRows);
+        if (rosterError) {
+          console.error("Failed to insert game_rosters:", rosterError);
+        } else {
+          console.log("game_rosters inserted:", rosterRows.length, "rows");
+        }
+      }
     }
   };
 
@@ -811,23 +845,20 @@ export default function GamePage() {
   if (phase === "select-starters") {
     const ready = startingA.length === 5 && startingB.length === 5;
     return (
-      <div className="min-h-screen bg-slate-900 p-8 pb-20">
-        <div className="max-w-5xl mx-auto flex flex-col gap-8">
+      <div className="min-h-screen bg-slate-900">
+        {/* Nav bar — matches match setup page */}
+        <header className="flex items-center gap-4 px-4 sm:px-8 py-4 border-b-4 border-slate-700">
+          <div className="h-6 w-px bg-slate-600" />
+          <h1 className="font-fredoka text-2xl sm:text-3xl font-black tracking-widest text-white">
+            Wire<span
+              className="text-[#65d421]"
+              style={{ textShadow: "1px 1px 0 #1b630a,2px 2px 0 #1b630a", WebkitTextStroke: "1px #1b630a" }}
+            >Stats</span>
+            <span className="text-slate-500 ml-3 text-lg sm:text-xl font-bold uppercase tracking-wider">/ Starting 5</span>
+          </h1>
+        </header>
 
-          <header className="border-b-4 border-slate-700 pb-6 mb-4 flex items-end gap-2">
-            <h1 className="font-fredoka text-6xl font-black tracking-widest text-white">
-              Wire<span
-                className="text-[#65d421] ml-2"
-                style={{
-                  textShadow: "1px 1px 0 #1b630a,2px 2px 0 #1b630a,3px 3px 0 #1b630a,4px 4px 0 #1b630a",
-                  WebkitTextStroke: "1px #1b630a",
-                }}
-              >Stats</span>
-            </h1>
-            <p className="font-nunito text-xl mb-1 ml-4 text-slate-400 font-bold uppercase tracking-wider">
-              Select Starting 5
-            </p>
-          </header>
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-6">
 
           <div className="grid md:grid-cols-2 gap-6">
             <StartingFiveSelector
@@ -844,28 +875,39 @@ export default function GamePage() {
             />
           </div>
 
-          <div className="flex flex-col items-center gap-3">
+          <div className="flex flex-col items-center gap-3 mt-4">
             {!ready && (
-              <p className="font-nunito text-sm font-bold text-slate-400">
-                Select 5 starters per team to begin
-              </p>
+              <ul className="flex flex-col items-center gap-1">
+                {startingA.length < 5 && (
+                  <li className="font-nunito text-sm font-bold text-red-400 flex items-center gap-1">
+                    <span>⚠</span> Team A needs {5 - startingA.length} more starter{5 - startingA.length !== 1 ? "s" : ""}
+                  </li>
+                )}
+                {startingB.length < 5 && (
+                  <li className="font-nunito text-sm font-bold text-red-400 flex items-center gap-1">
+                    <span>⚠</span> Team B needs {5 - startingB.length} more starter{5 - startingB.length !== 1 ? "s" : ""}
+                  </li>
+                )}
+              </ul>
             )}
             <button
               onClick={handleStartGame}
               disabled={!ready}
-              className={`font-fredoka text-3xl font-black uppercase tracking-widest px-16 py-4 border-2 transition-all
-                ${ready
-                  ? "bg-[#65d421] text-white border-[#1b630a] hover:bg-[#7ced38] shadow-[1px_1px_0_#1b630a,2px_2px_0_#1b630a,3px_3px_0_#1b630a,4px_4px_0_#1b630a,5px_5px_0_#1b630a,6px_6px_0_#1b630a] active:shadow-none active:translate-x-1 active:translate-y-1"
-                  : "bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed opacity-50"
-                }`}
+              className={`font-fredoka text-2xl font-black uppercase tracking-widest px-12 py-4 border-4 transition-all ${
+                ready
+                  ? "bg-[#65d421] border-[#1b630a] text-slate-900 shadow-[6px_6px_0_#1b630a] hover:-translate-y-1 hover:shadow-[8px_8px_0_#1b630a] active:translate-y-0 active:shadow-[2px_2px_0_#1b630a]"
+                  : "bg-slate-700 border-slate-600 text-slate-500 cursor-not-allowed"
+              }`}
             >
               TIPOFF
             </button>
           </div>
+
         </div>
       </div>
     );
   }
+
 
   // ═══════════════════════════════════════════════════════════════════════════
   // LIVE GAME SCREEN

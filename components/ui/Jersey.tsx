@@ -111,7 +111,7 @@ export function Jersey({
         />
         {/* Number */}
         <span
-          className={`font-fredoka font-black ${isLightColor(colorHex) ? 'text-slate-900' : 'text-white'} ${s.number} z-10`}
+          className={`font-fredoka font-black ${isLightColor(colorHex) ? 'text-slate-900' : 'text-white'} ${s.number} z-5`}
           style={{ textShadow: isLightColor(colorHex) ? "0 1px 3px rgba(255,255,255,0.3)" : "0 1px 4px rgba(0,0,0,0.5)" }}
         >
           {number}

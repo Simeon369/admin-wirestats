@@ -1,7 +1,7 @@
 // lib/gameState.ts
 // Shared types and sessionStorage helpers for passing match config to the game screen
 
-export type Player = { id: string; name: string; number: string };
+export type Player = { id: string; name: string; number: string; globalId?: string };
 
 export type TeamConfig = {
   name: string;
