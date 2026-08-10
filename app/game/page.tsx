@@ -354,8 +354,10 @@ export default function GamePage() {
         period: event.period,
         clock_snapshot: event.clockSnapshot,
         team: event.team,
+        player_id: event.player.globalId ?? null,
         player_name: event.player.name,
         player_number: event.player.number,
+        player_out_id: event.playerOut?.globalId ?? null,
         player_out_name: event.playerOut?.name ?? null,
         player_out_number: event.playerOut?.number ?? null,
       };
