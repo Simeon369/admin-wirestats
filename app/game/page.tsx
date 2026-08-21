@@ -104,10 +104,63 @@ export default function GamePage() {
 
   const handleEndGame = async () => {
     if (gameIdRef.current && supabase) {
-      // Mark game as finished in Supabase
-      supabase.from("games").update({ status: "finished" }).eq("id", gameIdRef.current).then();
+      // Mark game as finished
+      await supabase.from("games").update({ status: "finished" }).eq("id", gameIdRef.current);
+
+      // Auto-advance bracket: fetch current game to get next_game_id and winner info
+      const { data: finishedGame } = await supabase
+        .from("games")
+        .select("next_game_id, winner_slot, score_a, score_b, team_a_id, team_b_id, team_a_name, team_b_name, team_a_color, team_b_color, tournament_id")
+        .eq("id", gameIdRef.current)
+        .single();
+
+      if (finishedGame?.next_game_id && finishedGame.winner_slot) {
+        const winnerIsA = (finishedGame.score_a ?? 0) > (finishedGame.score_b ?? 0);
+        const winnerId = winnerIsA ? finishedGame.team_a_id : finishedGame.team_b_id;
+        const winnerName = winnerIsA ? finishedGame.team_a_name : finishedGame.team_b_name;
+        const winnerColor = winnerIsA ? finishedGame.team_a_color : finishedGame.team_b_color;
+        const loserId = winnerIsA ? finishedGame.team_b_id : finishedGame.team_a_id;
+        const loserName = winnerIsA ? finishedGame.team_b_name : finishedGame.team_a_name;
+        const loserColor = winnerIsA ? finishedGame.team_b_color : finishedGame.team_a_color;
+        const slot = finishedGame.winner_slot; // 'A' or 'B'
+
+        const updatePayload = slot === "A"
+          ? { team_a_id: winnerId, team_a_name: winnerName, team_a_color: winnerColor }
+          : { team_b_id: winnerId, team_b_name: winnerName, team_b_color: winnerColor };
+
+        // Fetch next game to check if it now has both teams
+        const { data: nextGame } = await supabase.from("games").select("team_a_id, team_b_id").eq("id", finishedGame.next_game_id).single();
+        const willHaveBothTeams = slot === "A" ? !!nextGame?.team_b_id : !!nextGame?.team_a_id;
+
+        await supabase.from("games")
+          .update({ ...updatePayload, ...(willHaveBothTeams ? { status: "scheduled" } : {}) })
+          .eq("id", finishedGame.next_game_id);
+
+        // Also advance the LOSER into the Third Place game (if one exists)
+        if (loserId && finishedGame.tournament_id) {
+          const { data: thirdPlaceGame } = await supabase
+            .from("games")
+            .select("id, team_a_id, team_b_id, team_a_name, team_b_name")
+            .eq("tournament_id", finishedGame.tournament_id)
+            .eq("is_third_place", true)
+            .single();
+
+          if (thirdPlaceGame) {
+            // Fill slot A first, then slot B
+            const loserSlot = !thirdPlaceGame.team_a_id ? "A" : "B";
+            const loserPayload = loserSlot === "A"
+              ? { team_a_id: loserId, team_a_name: loserName, team_a_color: loserColor }
+              : { team_b_id: loserId, team_b_name: loserName, team_b_color: loserColor };
+
+            const willThirdHaveBoth = loserSlot === "A" ? !!thirdPlaceGame.team_b_id : !!thirdPlaceGame.team_a_id;
+
+            await supabase.from("games")
+              .update({ ...loserPayload, ...(willThirdHaveBoth ? { status: "scheduled" } : {}) })
+              .eq("id", thirdPlaceGame.id);
+          }
+        }
+      }
     }
-    // Clear active game
     localStorage.removeItem("wirestats_active_game_id");
     router.push("/");
   };

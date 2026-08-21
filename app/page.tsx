@@ -76,17 +76,19 @@ export default function AdminDashboard() {
             </div>
           </Link>
 
-          <div className="h-full flex flex-col items-center justify-center gap-6 p-8 border-4 border-slate-900 bg-slate-200 shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] opacity-70">
-            <div className="w-20 h-20 bg-slate-400 border-4 border-slate-900 flex items-center justify-center rounded-full text-slate-700 shadow-[4px_4px_0_#475569]">
-              <svg xmlns="http://www.w3.org/O/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-10 h-10">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.29 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" />
-              </svg>
+          <Link href="/tournaments" className="group">
+            <div className="h-full flex flex-col items-center justify-center gap-6 p-8 border-4 border-slate-900 bg-white shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] transition-transform group-hover:-translate-y-2 group-hover:shadow-[12px_12px_0px_0px_rgba(15,23,42,1)] cursor-pointer">
+              <div className="w-20 h-20 bg-amber-400 border-4 border-slate-900 flex items-center justify-center rounded-full text-slate-900 shadow-[4px_4px_0_#b45309]">
+                <svg xmlns="http://www.w3.org/O/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-10 h-10">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.29 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" />
+                </svg>
+              </div>
+              <h2 className="font-fredoka text-2xl uppercase tracking-wider text-slate-900 font-bold text-center">
+                Tournaments
+              </h2>
+              <p className="font-nunito text-slate-600 text-center font-bold">Manage leagues and brackets.</p>
             </div>
-            <h2 className="font-fredoka text-2xl uppercase tracking-wider text-slate-900 font-bold text-center">
-              Create Tournament
-            </h2>
-            <p className="font-nunito text-slate-600 text-center font-bold">Coming Soon in V2</p>
-          </div>
+          </Link>
         </div>
       </div>
     </div>
