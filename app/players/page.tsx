@@ -95,6 +95,7 @@ function PlayerRow({
   const [editName, setEditName] = useState(player.full_name);
   const [editJersey, setEditJersey] = useState(player.jersey_name);
   const [editPos, setEditPos] = useState(player.position);
+  const [editGender, setEditGender] = useState(player.gender || "");
 
   const editNameRef = useRef<HTMLInputElement>(null);
 
@@ -102,6 +103,7 @@ function PlayerRow({
     setEditName(player.full_name);
     setEditJersey(player.jersey_name);
     setEditPos(player.position);
+    setEditGender(player.gender || "");
     setEditing(true);
     setTimeout(() => editNameRef.current?.focus(), 20);
   };
@@ -115,7 +117,7 @@ function PlayerRow({
     setSaving(true);
     const { data } = await supabase
       .from("players")
-      .update({ full_name: editName.trim(), jersey_name: editJersey.trim(), position: editPos })
+      .update({ full_name: editName.trim(), jersey_name: editJersey.trim(), position: editPos, gender: editGender || null })
       .eq("id", player.id)
       .select();
     if (data && data.length > 0) {
@@ -149,7 +151,6 @@ function PlayerRow({
           />
         </div>
         <div className="flex items-center justify-between gap-2">
-          {/* Position pills */}
           <div className="flex gap-1.5">
             {POSITIONS.map(pos => (
               <button
@@ -163,6 +164,23 @@ function PlayerRow({
                 }`}
               >
                 {pos}
+              </button>
+            ))}
+          </div>
+          {/* Gender pills */}
+          <div className="flex gap-1.5 border-l-2 border-slate-600 pl-2">
+            {["Male", "Female", "Other"].map(g => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => setEditGender(g)}
+                className={`font-fredoka text-xs font-black px-2.5 py-1 border-2 transition-all ${
+                  editGender === g
+                    ? "bg-[#65d421] border-[#1b630a] text-slate-900"
+                    : "bg-slate-900 border-slate-600 text-slate-400 hover:text-white"
+                }`}
+              >
+                {g}
               </button>
             ))}
           </div>
@@ -201,8 +219,13 @@ function PlayerRow({
       </span>
 
       {/* Name */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 flex items-center gap-2">
         <span className="font-fredoka text-base sm:text-lg font-black text-white truncate block">{player.full_name}</span>
+        {player.gender && (
+          <span className="font-nunito text-[10px] font-bold px-1.5 py-0.5 bg-slate-700 text-slate-300 border border-slate-600 uppercase tracking-widest shrink-0">
+            {player.gender}
+          </span>
+        )}
       </div>
 
       {/* Jersey name */}
@@ -243,10 +266,10 @@ export default function PlayersManagement() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Form state
   const [fullName, setFullName] = useState("");
   const [jerseyName, setJerseyName] = useState("");
   const [position, setPosition] = useState("");
+  const [gender, setGender] = useState("");
   const [formError, setFormError] = useState("");
 
   // Directory state
@@ -304,18 +327,24 @@ export default function PlayersManagement() {
       return;
     }
 
+    if (!gender) {
+      setFormError("Please select a gender for the player.");
+      return;
+    }
+
     setSaving(true);
     setFormError("");
     
     const { data } = await supabase
       .from("players")
-      .insert([{ full_name: fullName.trim(), jersey_name: jerseyName.trim(), position }])
+      .insert([{ full_name: fullName.trim(), jersey_name: jerseyName.trim(), position, gender }])
       .select();
     if (data && data.length > 0) {
       setPlayers([data[0] as GlobalPlayer, ...players]);
       setFullName("");
       setJerseyName("");
       setPosition("");
+      setGender("");
       nameInputRef.current?.focus();
     }
     setSaving(false);
@@ -403,27 +432,52 @@ export default function PlayersManagement() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="font-nunito text-xs font-bold uppercase tracking-widest text-slate-400">Position</label>
-            <div className="flex gap-2">
-              {POSITIONS.map(pos => (
-                <button
-                  key={pos}
-                  type="button"
-                  onClick={() => {
-                    setPosition(pos);
-                    setFormError("");
-                    submitBtnRef.current?.focus();
-                  }}
-                  className={`font-fredoka text-sm font-black px-4 py-2 border-2 transition-all ${
-                    position === pos
-                      ? "bg-[#65d421] border-[#1b630a] text-slate-900 shadow-[2px_2px_0_#1b630a]"
-                      : "bg-slate-900 border-slate-600 text-slate-400 hover:border-slate-400 hover:text-white"
-                  }`}
-                >
-                  {pos}
-                </button>
-              ))}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1 flex flex-col gap-1">
+              <label className="font-nunito text-xs font-bold uppercase tracking-widest text-slate-400">Position</label>
+              <div className="flex gap-2">
+                {POSITIONS.map(pos => (
+                  <button
+                    key={pos}
+                    type="button"
+                    onClick={() => {
+                      setPosition(pos);
+                      setFormError("");
+                    }}
+                    className={`font-fredoka text-sm font-black px-4 py-2 border-2 transition-all ${
+                      position === pos
+                        ? "bg-[#65d421] border-[#1b630a] text-slate-900 shadow-[2px_2px_0_#1b630a]"
+                        : "bg-slate-900 border-slate-600 text-slate-400 hover:border-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {pos}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex-1 flex flex-col gap-1">
+              <label className="font-nunito text-xs font-bold uppercase tracking-widest text-slate-400">Gender</label>
+              <div className="flex gap-2">
+                {["Male", "Female", "Other"].map(g => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => {
+                      setGender(g);
+                      setFormError("");
+                      submitBtnRef.current?.focus();
+                    }}
+                    className={`font-fredoka text-sm font-black px-4 py-2 border-2 transition-all ${
+                      gender === g
+                        ? "bg-[#65d421] border-[#1b630a] text-slate-900 shadow-[2px_2px_0_#1b630a]"
+                        : "bg-slate-900 border-slate-600 text-slate-400 hover:border-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

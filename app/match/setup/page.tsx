@@ -136,6 +136,7 @@ export default function MatchSetup() {
   const [qrFullName, setQrFullName] = useState("");
   const [qrJerseyName, setQrJerseyName] = useState("");
   const [qrPosition, setQrPosition] = useState("");
+  const [qrGender, setQrGender] = useState("");
   const [qrFormError, setQrFormError] = useState("");
   const [targetTeamForQR, setTargetTeamForQR] = useState<"A" | "B" | null>(null);
   
@@ -241,10 +242,15 @@ export default function MatchSetup() {
       return;
     }
 
+    if (!qrGender) {
+      setQrFormError("Please select a gender for the player.");
+      return;
+    }
+
     setQrFormError("");
     
     const { data } = await supabase.from("players").insert([
-      { full_name: qrFullName.trim(), jersey_name: qrJerseyName.trim(), position: qrPosition }
+      { full_name: qrFullName.trim(), jersey_name: qrJerseyName.trim(), position: qrPosition, gender: qrGender }
     ]).select();
 
     if (data && data.length > 0) {
@@ -255,6 +261,7 @@ export default function MatchSetup() {
       setQrFullName("");
       setQrJerseyName("");
       setQrPosition("");
+      setQrGender("");
     }
   };
 
@@ -506,27 +513,51 @@ export default function MatchSetup() {
               />
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="font-nunito text-xs font-bold uppercase tracking-widest text-slate-400">Position</label>
-              <div className="flex gap-1 flex-wrap">
-                {POSITIONS.map(pos => (
-                  <button
-                    key={pos}
-                    type="button"
-                    onClick={() => {
-                      setQrPosition(pos);
-                      setQrFormError("");
-                      qrSubmitBtnRef.current?.focus();
-                    }}
-                    className={`font-fredoka text-xs font-black px-2 py-1 border-2 transition-all ${
-                      qrPosition === pos
-                        ? "bg-[#65d421] border-[#1b630a] text-slate-900"
-                        : "bg-slate-900 border-slate-600 text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    {pos}
-                  </button>
-                ))}
+            <div className="flex gap-4">
+              <div className="flex-1 flex flex-col gap-1">
+                <label className="font-nunito text-xs font-bold uppercase tracking-widest text-slate-400">Position</label>
+                <div className="flex gap-1 flex-wrap">
+                  {POSITIONS.map(pos => (
+                    <button
+                      key={pos}
+                      type="button"
+                      onClick={() => {
+                        setQrPosition(pos);
+                        setQrFormError("");
+                      }}
+                      className={`font-fredoka text-xs font-black px-2.5 py-1 border-2 transition-all ${
+                        qrPosition === pos
+                          ? "bg-[#65d421] border-[#1b630a] text-slate-900"
+                          : "bg-slate-900 border-slate-600 text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {pos}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex-1 flex flex-col gap-1">
+                <label className="font-nunito text-xs font-bold uppercase tracking-widest text-slate-400">Gender</label>
+                <div className="flex gap-1 flex-wrap">
+                  {["Male", "Female", "Other"].map(g => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => {
+                        setQrGender(g);
+                        setQrFormError("");
+                        qrSubmitBtnRef.current?.focus();
+                      }}
+                      className={`font-fredoka text-xs font-black px-2.5 py-1 border-2 transition-all ${
+                        qrGender === g
+                          ? "bg-[#65d421] border-[#1b630a] text-slate-900"
+                          : "bg-slate-900 border-slate-600 text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {g.charAt(0)}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 

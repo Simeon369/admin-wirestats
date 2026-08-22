@@ -3,6 +3,7 @@ export type GlobalPlayer = {
   full_name: string;
   jersey_name: string;
   position: 'PG' | 'SG' | 'SF' | 'PF' | 'C';
+  gender?: string | null;
   created_at?: string;
 };
 

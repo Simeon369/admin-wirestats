@@ -80,15 +80,16 @@ PlayerAutocomplete.displayName = "PlayerAutocomplete";
 
 // ── Quick Register Modal ───────────────────────────────────────────
 function QuickRegisterModal({ onClose, onRegistered }: { onClose: () => void; onRegistered: (p: GlobalPlayer) => void }) {
-  const [fullName, setFullName] = useState(""); const [jerseyName, setJerseyName] = useState(""); const [position, setPosition] = useState(""); const [error, setError] = useState("");
+  const [fullName, setFullName] = useState(""); const [jerseyName, setJerseyName] = useState(""); const [position, setPosition] = useState(""); const [gender, setGender] = useState(""); const [error, setError] = useState("");
   const submitRef = useRef<HTMLButtonElement>(null);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName.trim()) { setError("Full name is required."); return; }
     if (!jerseyName.trim()) { setError("Jersey name is required."); return; }
     if (!position) { setError("Please select a position."); return; }
+    if (!gender) { setError("Please select a gender."); return; }
     setError("");
-    const { data } = await supabase.from("players").insert([{ full_name: fullName.trim(), jersey_name: jerseyName.trim(), position }]).select();
+    const { data } = await supabase.from("players").insert([{ full_name: fullName.trim(), jersey_name: jerseyName.trim(), position, gender }]).select();
     if (data && data[0]) onRegistered(data[0] as GlobalPlayer);
   };
   return (
@@ -105,8 +106,13 @@ function QuickRegisterModal({ onClose, onRegistered }: { onClose: () => void; on
         <div className="flex flex-col gap-1"><label className="font-nunito text-xs font-bold uppercase tracking-widest text-slate-400">Jersey Name</label>
           <input type="text" placeholder="JOHN" value={jerseyName} onChange={e => { setJerseyName(e.target.value.toUpperCase()); setError(""); }} className="bg-slate-900 border-2 border-slate-600 focus:border-[#65d421] outline-none text-white font-nunito font-bold px-3 py-2 text-sm uppercase transition-colors" />
         </div>
-        <div className="flex flex-col gap-2"><label className="font-nunito text-xs font-bold uppercase tracking-widest text-slate-400">Position</label>
-          <div className="flex gap-1 flex-wrap">{POSITIONS.map(pos => (<button key={pos} type="button" onClick={() => { setPosition(pos); setError(""); submitRef.current?.focus(); }} className={`font-fredoka text-xs font-black px-3 py-1.5 border-2 transition-all ${position === pos ? "bg-[#65d421] border-[#1b630a] text-slate-900" : "bg-slate-900 border-slate-600 text-slate-400 hover:text-white"}`}>{pos}</button>))}</div>
+        <div className="flex gap-4">
+          <div className="flex-1 flex flex-col gap-2"><label className="font-nunito text-xs font-bold uppercase tracking-widest text-slate-400">Position</label>
+            <div className="flex gap-1 flex-wrap">{POSITIONS.map(pos => (<button key={pos} type="button" onClick={() => { setPosition(pos); setError(""); }} className={`font-fredoka text-xs font-black px-2.5 py-1.5 border-2 transition-all ${position === pos ? "bg-[#65d421] border-[#1b630a] text-slate-900" : "bg-slate-900 border-slate-600 text-slate-400 hover:text-white"}`}>{pos}</button>))}</div>
+          </div>
+          <div className="flex-1 flex flex-col gap-2"><label className="font-nunito text-xs font-bold uppercase tracking-widest text-slate-400">Gender</label>
+            <div className="flex gap-1 flex-wrap">{["Male", "Female", "Other"].map(g => (<button key={g} type="button" onClick={() => { setGender(g); setError(""); submitRef.current?.focus(); }} className={`font-fredoka text-xs font-black px-2.5 py-1.5 border-2 transition-all ${gender === g ? "bg-[#65d421] border-[#1b630a] text-slate-900" : "bg-slate-900 border-slate-600 text-slate-400 hover:text-white"}`}>{g.charAt(0)}</button>))}</div>
+          </div>
         </div>
         {error && <p className="font-nunito text-sm font-bold text-red-400">⚠ {error}</p>}
         <div className="flex gap-2 mt-1">
