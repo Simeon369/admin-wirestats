@@ -7,6 +7,107 @@ import { GlobalPlayer } from "@/lib/types";
 
 const POSITIONS = ["PG", "SG", "SF", "PF", "C"];
 const POSITION_FILTERS = ["ALL", ...POSITIONS];
+const GENDER_FILTERS = ["ALL", "Male", "Female", "Other"];
+
+// ── Custom Filter Dropdown ──────────────────────────────────────
+function FilterDropdown({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: string[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const isFiltered = value !== options[0];
+
+  return (
+    <div ref={ref} className="relative flex-1 min-w-[100px]">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`w-full flex items-center justify-between gap-1.5 px-3 py-1.5 border-2 font-fredoka text-xs font-black uppercase tracking-widest transition-all ${
+          isFiltered
+            ? "bg-[#65d421] border-[#1b630a] text-slate-900"
+            : "bg-slate-800 border-slate-600 text-slate-400 hover:border-slate-400 hover:text-white"
+        }`}
+      >
+        <span>{isFiltered ? value : label}</span>
+        <svg
+          className={`w-3 h-3 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+          viewBox="0 0 20 20"
+          fill="currentColor"
+        >
+          <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-0.5 z-50 bg-slate-800 border-2 border-slate-600 shadow-[4px_4px_0_#0f172a] flex flex-col overflow-hidden">
+          {options.map(opt => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => { onChange(opt); setOpen(false); }}
+              className={`px-3 py-2 text-left font-fredoka text-xs font-black uppercase tracking-widest transition-colors ${
+                value === opt
+                  ? "bg-[#65d421] text-slate-900"
+                  : "text-slate-400 hover:bg-slate-700 hover:text-white"
+              }`}
+            >
+              {opt === options[0] ? `All ${label}s` : opt}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Compact inline select for edit rows ────────────────────────
+function InlineSelect({
+  options,
+  value,
+  onChange,
+}: {
+  options: string[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="appearance-none bg-slate-900 border-2 border-slate-600 focus:border-[#65d421] outline-none text-white font-fredoka text-xs font-black uppercase tracking-widest px-2.5 py-1.5 pr-6 transition-colors cursor-pointer"
+      >
+        {options.map(opt => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
+      </select>
+      <svg
+        className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none"
+        viewBox="0 0 20 20"
+        fill="currentColor"
+      >
+        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+      </svg>
+    </div>
+  );
+}
 
 // ── Delete confirmation modal ────────────────────────────
 function DeleteModal({
@@ -150,42 +251,18 @@ function PlayerRow({
             className="w-24 bg-slate-900 border-2 border-slate-600 focus:border-[#65d421] outline-none text-white font-nunito font-bold px-3 py-2 text-sm uppercase placeholder:text-slate-600 transition-colors"
           />
         </div>
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex gap-1.5">
-            {POSITIONS.map(pos => (
-              <button
-                key={pos}
-                type="button"
-                onClick={() => setEditPos(pos as GlobalPlayer["position"])}
-                className={`font-fredoka text-xs font-black px-2.5 py-1 border-2 transition-all ${
-                  editPos === pos
-                    ? "bg-[#65d421] border-[#1b630a] text-slate-900"
-                    : "bg-slate-900 border-slate-600 text-slate-400 hover:text-white"
-                }`}
-              >
-                {pos}
-              </button>
-            ))}
-          </div>
-          {/* Gender pills */}
-          <div className="flex gap-1.5 border-l-2 border-slate-600 pl-2">
-            {["Male", "Female", "Other"].map(g => (
-              <button
-                key={g}
-                type="button"
-                onClick={() => setEditGender(g)}
-                className={`font-fredoka text-xs font-black px-2.5 py-1 border-2 transition-all ${
-                  editGender === g
-                    ? "bg-[#65d421] border-[#1b630a] text-slate-900"
-                    : "bg-slate-900 border-slate-600 text-slate-400 hover:text-white"
-                }`}
-              >
-                {g}
-              </button>
-            ))}
-          </div>
-          {/* Action buttons */}
-          <div className="flex gap-2 shrink-0">
+        <div className="flex items-center gap-2">
+          <InlineSelect
+            options={POSITIONS}
+            value={editPos}
+            onChange={v => setEditPos(v as GlobalPlayer["position"])}
+          />
+          <InlineSelect
+            options={["Male", "Female", "Other"]}
+            value={editGender || "Male"}
+            onChange={v => setEditGender(v)}
+          />
+          <div className="flex gap-2 shrink-0 ml-auto">
             <button
               onClick={cancelEdit}
               className="font-fredoka text-xs font-black px-3 py-1.5 border-2 bg-slate-800 border-slate-600 text-slate-400 hover:text-white transition-colors"
@@ -275,6 +352,7 @@ export default function PlayersManagement() {
   // Directory state
   const [search, setSearch] = useState("");
   const [filterPos, setFilterPos] = useState("ALL");
+  const [filterGender, setFilterGender] = useState("ALL");
 
   // Delete modal state
   const [playerToDelete, setPlayerToDelete] = useState<GlobalPlayer | null>(null);
@@ -362,16 +440,17 @@ export default function PlayersManagement() {
   };
 
   // Searching or filtering? Show full filtered list. Otherwise show latest 5.
-  const isSearching = search.trim().length > 0 || filterPos !== "ALL";
+  const isSearching = search.trim().length > 0 || filterPos !== "ALL" || filterGender !== "ALL";
 
   const filteredPlayers = players.filter(p => {
     const q = search.toLowerCase();
     const matchSearch = !q || p.full_name.toLowerCase().includes(q) || p.jersey_name.toLowerCase().includes(q);
     const matchPos = filterPos === "ALL" || p.position === filterPos;
-    return matchSearch && matchPos;
+    const matchGender = filterGender === "ALL" || p.gender === filterGender;
+    return matchSearch && matchPos && matchGender;
   });
 
-  const displayedPlayers = isSearching ? filteredPlayers : players.slice(0, 5);
+  const displayedPlayers = isSearching ? filteredPlayers : filteredPlayers.slice(0, 5);
 
   return (
     <>
@@ -432,7 +511,7 @@ export default function PlayersManagement() {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-col  gap-3">
             <div className="flex-1 flex flex-col gap-1">
               <label className="font-nunito text-xs font-bold uppercase tracking-widest text-slate-400">Position</label>
               <div className="flex gap-2">
@@ -521,20 +600,9 @@ export default function PlayersManagement() {
               onChange={e => setSearch(e.target.value)}
               className="w-full bg-slate-800 border-2 border-slate-600 focus:border-[#65d421] outline-none text-white font-nunito font-bold px-3 py-2.5 text-sm placeholder:text-slate-600 transition-colors"
             />
-            <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none">
-              {POSITION_FILTERS.map(pos => (
-                <button
-                  key={pos}
-                  onClick={() => setFilterPos(pos)}
-                  className={`font-fredoka text-xs font-black px-3 py-1.5 border-2 shrink-0 transition-all ${
-                    filterPos === pos
-                      ? "bg-white border-slate-900 text-slate-900 shadow-[2px_2px_0_#0f172a]"
-                      : "bg-slate-800 border-slate-600 text-slate-400 hover:text-white hover:border-slate-400"
-                  }`}
-                >
-                  {pos}
-                </button>
-              ))}
+            <div className="flex gap-2">
+              <FilterDropdown label="Position" options={POSITION_FILTERS} value={filterPos} onChange={setFilterPos} />
+              <FilterDropdown label="Gender" options={GENDER_FILTERS} value={filterGender} onChange={setFilterGender} />
             </div>
           </div>
 
