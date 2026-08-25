@@ -296,7 +296,7 @@ function TeamFormModal({ onClose, onSaved, globalPlayers, onNewPlayer, teamToEdi
 }
 
 // ── Game Card ──────────────────────────────────────────────────────
-function GameCard({ game, onStart }: { game: GameRow; onStart: () => void }) {
+function GameCard({ game, onStart, onFixAdvancement }: { game: GameRow; onStart: () => void; onFixAdvancement?: (id: string) => void }) {
   const isPending = game.status === "scheduled" && (!game.team_a_id || !game.team_b_id);
   const isScheduled = game.status === "scheduled" && !!(game.team_a_id && game.team_b_id);
   const isDone = game.status === "finished";
@@ -356,8 +356,18 @@ function GameCard({ game, onStart }: { game: GameRow; onStart: () => void }) {
       )}
 
       {isDone ? (
-        <div className="text-center font-fredoka font-black uppercase tracking-wider text-sm bg-slate-100 border-2 border-slate-300 py-2 text-slate-600">
-          {game.score_a ?? "–"} – {game.score_b ?? "–"} · FINAL
+        <div className="flex flex-col gap-2">
+          <div className="text-center font-fredoka font-black uppercase tracking-wider text-sm bg-slate-100 border-2 border-slate-300 py-2 text-slate-600">
+            {game.score_a ?? "–"} – {game.score_b ?? "–"} · FINAL
+          </div>
+          {onFixAdvancement && (
+            <button 
+              onClick={() => onFixAdvancement(game.id)} 
+              className="w-full font-nunito font-bold text-[10px] uppercase tracking-widest py-1 border border-slate-300 text-slate-500 hover:text-slate-900 hover:border-slate-900 hover:bg-slate-100 transition-colors"
+            >
+              Fix Bracket Advancement
+            </button>
+          )}
         </div>
       ) : isScheduled ? (
         <button onClick={onStart} className="w-full font-fredoka font-black uppercase tracking-widest py-2 border-2 border-slate-900 bg-slate-900 text-[#65d421] hover:bg-slate-700 transition-colors text-sm">
@@ -623,6 +633,97 @@ export default function AdminTournamentManage() {
     if (!confirm("Are you sure you want to activate this tournament? This will make it visible to the public.")) return;
     await supabase.from("tournaments").update({ status: "ACTIVE" }).eq("id", id);
     fetchAll();
+  };
+
+  const handleFixAdvancement = async (gameId: string) => {
+    if (!confirm("Re-run bracket advancement for this game?")) return;
+    
+    const { data: finishedGame } = await supabase
+      .from("games")
+      .select("next_game_id, winner_slot, score_a, score_b, team_a_id, team_b_id, team_a_name, team_b_name, team_a_color, team_b_color, tournament_id, bracket_round, bracket_position, is_third_place")
+      .eq("id", gameId)
+      .single();
+
+    if (finishedGame && !finishedGame.is_third_place) {
+      const finalScoreA = finishedGame.score_a ?? 0;
+      const finalScoreB = finishedGame.score_b ?? 0;
+      const winnerIsA = finalScoreA > finalScoreB;
+      const winnerId = winnerIsA ? finishedGame.team_a_id : finishedGame.team_b_id;
+      const winnerName = winnerIsA ? finishedGame.team_a_name : finishedGame.team_b_name;
+      const winnerColor = winnerIsA ? finishedGame.team_a_color : finishedGame.team_b_color;
+      const loserId = winnerIsA ? finishedGame.team_b_id : finishedGame.team_a_id;
+      const loserName = winnerIsA ? finishedGame.team_b_name : finishedGame.team_a_name;
+      const loserColor = winnerIsA ? finishedGame.team_b_color : finishedGame.team_a_color;
+
+      // ── Path 1: next_game_id is explicitly set (Single Elimination bracket) ──
+      if (finishedGame.next_game_id && finishedGame.winner_slot) {
+        const slot = finishedGame.winner_slot as "A" | "B";
+        const updatePayload = slot === "A"
+          ? { team_a_id: winnerId, team_a_name: winnerName, team_a_color: winnerColor }
+          : { team_b_id: winnerId, team_b_name: winnerName, team_b_color: winnerColor };
+
+        const { data: nextGame } = await supabase.from("games").select("team_a_id, team_b_id").eq("id", finishedGame.next_game_id).single();
+        const willHaveBothTeams = slot === "A" ? !!nextGame?.team_b_id : !!nextGame?.team_a_id;
+
+        await supabase.from("games")
+          .update({ ...updatePayload, ...(willHaveBothTeams ? { status: "scheduled" } : {}) })
+          .eq("id", finishedGame.next_game_id);
+
+      // ── Path 2: No next_game_id (Hybrid or unlinked brackets) ──
+      } else if (finishedGame.tournament_id && finishedGame.bracket_round != null) {
+        const nextRound = finishedGame.bracket_round + 1;
+        const currentPos = finishedGame.bracket_position;
+        const { data: allNextRoundGames } = await supabase
+          .from("games")
+          .select("id, bracket_round, bracket_position, team_a_id, team_b_id, team_a_name, team_b_name")
+          .eq("tournament_id", finishedGame.tournament_id)
+          .eq("bracket_round", nextRound)
+          .eq("is_third_place", false)
+          .order("bracket_position");
+
+        if (allNextRoundGames && allNextRoundGames.length > 0) {
+          const parentIndex = Math.floor((currentPos - 1) / 2);
+          const nextGame = allNextRoundGames[Math.min(parentIndex, allNextRoundGames.length - 1)];
+
+          if (nextGame) {
+            const slot: "A" | "B" = currentPos % 2 === 1 ? "A" : "B";
+            const updatePayload = slot === "A"
+              ? { team_a_id: winnerId, team_a_name: winnerName, team_a_color: winnerColor }
+              : { team_b_id: winnerId, team_b_name: winnerName, team_b_color: winnerColor };
+
+            const willHaveBothTeams = slot === "A" ? !!nextGame.team_b_id : !!nextGame.team_a_id;
+
+            await supabase.from("games")
+              .update({ ...updatePayload, ...(willHaveBothTeams ? { status: "scheduled" } : {}) })
+              .eq("id", nextGame.id);
+          }
+        }
+      }
+
+      // ── Always: advance LOSER into Third Place game (if one exists) ──
+      if (loserId && finishedGame.tournament_id) {
+        const { data: thirdPlaceGame } = await supabase
+          .from("games")
+          .select("id, team_a_id, team_b_id, team_a_name, team_b_name")
+          .eq("tournament_id", finishedGame.tournament_id)
+          .eq("is_third_place", true)
+          .maybeSingle();
+
+        if (thirdPlaceGame) {
+          const loserSlot = !thirdPlaceGame.team_a_id ? "A" : "B";
+          const loserPayload = loserSlot === "A"
+            ? { team_a_id: loserId, team_a_name: loserName, team_a_color: loserColor }
+            : { team_b_id: loserId, team_b_name: loserName, team_b_color: loserColor };
+
+          const willThirdHaveBoth = loserSlot === "A" ? !!thirdPlaceGame.team_b_id : !!thirdPlaceGame.team_a_id;
+
+          await supabase.from("games")
+            .update({ ...loserPayload, ...(willThirdHaveBoth ? { status: "scheduled" } : {}) })
+            .eq("id", thirdPlaceGame.id);
+        }
+      }
+    }
+    await fetchAll();
   };
 
   const handleAutoSeed = async () => {
@@ -955,7 +1056,12 @@ export default function AdminTournamentManage() {
                   <h3 className="font-fredoka text-xl font-black uppercase tracking-widest text-slate-400 mb-3 pb-2 border-b-2 border-slate-700">{roundName}</h3>
                   <div className="grid md:grid-cols-2 gap-4">
                     {roundGames.map(g => (
-                      <GameCard key={g.id} game={g} onStart={() => router.push(`/match/pregame?game=${g.id}`)} />
+                      <GameCard 
+                        key={g.id} 
+                        game={g} 
+                        onStart={() => router.push(`/match/pregame?game=${g.id}`)} 
+                        onFixAdvancement={handleFixAdvancement} 
+                      />
                     ))}
                   </div>
                 </div>

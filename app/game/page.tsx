@@ -104,46 +104,92 @@ export default function GamePage() {
 
   const handleEndGame = async () => {
     if (gameIdRef.current && supabase) {
-      // Mark game as finished
-      await supabase.from("games").update({ status: "finished" }).eq("id", gameIdRef.current);
+      // Use in-memory scores to avoid race conditions with async score sync
+      const finalScoreA = scoreA;
+      const finalScoreB = scoreB;
+
+      // Mark game as finished with final scores (ensures scores are authoritative)
+      await supabase.from("games").update({
+        status: "finished",
+        score_a: finalScoreA,
+        score_b: finalScoreB,
+      }).eq("id", gameIdRef.current);
 
       // Auto-advance bracket: fetch current game to get next_game_id and winner info
       const { data: finishedGame } = await supabase
         .from("games")
-        .select("next_game_id, winner_slot, score_a, score_b, team_a_id, team_b_id, team_a_name, team_b_name, team_a_color, team_b_color, tournament_id")
+        .select("next_game_id, winner_slot, score_a, score_b, team_a_id, team_b_id, team_a_name, team_b_name, team_a_color, team_b_color, tournament_id, bracket_round, bracket_position, is_third_place, round_name")
         .eq("id", gameIdRef.current)
         .single();
 
-      if (finishedGame?.next_game_id && finishedGame.winner_slot) {
-        const winnerIsA = (finishedGame.score_a ?? 0) > (finishedGame.score_b ?? 0);
+      if (finishedGame && !finishedGame.is_third_place) {
+        const winnerIsA = finalScoreA > finalScoreB;
         const winnerId = winnerIsA ? finishedGame.team_a_id : finishedGame.team_b_id;
         const winnerName = winnerIsA ? finishedGame.team_a_name : finishedGame.team_b_name;
         const winnerColor = winnerIsA ? finishedGame.team_a_color : finishedGame.team_b_color;
         const loserId = winnerIsA ? finishedGame.team_b_id : finishedGame.team_a_id;
         const loserName = winnerIsA ? finishedGame.team_b_name : finishedGame.team_a_name;
         const loserColor = winnerIsA ? finishedGame.team_b_color : finishedGame.team_a_color;
-        const slot = finishedGame.winner_slot; // 'A' or 'B'
 
-        const updatePayload = slot === "A"
-          ? { team_a_id: winnerId, team_a_name: winnerName, team_a_color: winnerColor }
-          : { team_b_id: winnerId, team_b_name: winnerName, team_b_color: winnerColor };
+        // ── Path 1: next_game_id is explicitly set (Single Elimination bracket) ──
+        if (finishedGame.next_game_id && finishedGame.winner_slot) {
+          const slot = finishedGame.winner_slot as "A" | "B";
 
-        // Fetch next game to check if it now has both teams
-        const { data: nextGame } = await supabase.from("games").select("team_a_id, team_b_id").eq("id", finishedGame.next_game_id).single();
-        const willHaveBothTeams = slot === "A" ? !!nextGame?.team_b_id : !!nextGame?.team_a_id;
+          const updatePayload = slot === "A"
+            ? { team_a_id: winnerId, team_a_name: winnerName, team_a_color: winnerColor }
+            : { team_b_id: winnerId, team_b_name: winnerName, team_b_color: winnerColor };
 
-        await supabase.from("games")
-          .update({ ...updatePayload, ...(willHaveBothTeams ? { status: "scheduled" } : {}) })
-          .eq("id", finishedGame.next_game_id);
+          // Fetch next game to check if it now has both teams
+          const { data: nextGame } = await supabase.from("games").select("team_a_id, team_b_id").eq("id", finishedGame.next_game_id).single();
+          const willHaveBothTeams = slot === "A" ? !!nextGame?.team_b_id : !!nextGame?.team_a_id;
 
-        // Also advance the LOSER into the Third Place game (if one exists)
+          await supabase.from("games")
+            .update({ ...updatePayload, ...(willHaveBothTeams ? { status: "scheduled" } : {}) })
+            .eq("id", finishedGame.next_game_id);
+
+        // ── Path 2: No next_game_id (Hybrid or unlinked brackets) ──
+        } else if (finishedGame.tournament_id && finishedGame.bracket_round != null) {
+          const nextRound = finishedGame.bracket_round + 1;
+          const currentPos = finishedGame.bracket_position;
+
+          // Find the next game in the bracket (next round, parent position)
+          const { data: allNextRoundGames } = await supabase
+            .from("games")
+            .select("id, bracket_round, bracket_position, team_a_id, team_b_id, team_a_name, team_b_name, round_name")
+            .eq("tournament_id", finishedGame.tournament_id)
+            .eq("bracket_round", nextRound)
+            .eq("is_third_place", false)
+            .order("bracket_position");
+
+          if (allNextRoundGames && allNextRoundGames.length > 0) {
+            // Pair games: positions 1&2 → next[0], positions 3&4 → next[1], etc.
+            const parentIndex = Math.floor((currentPos - 1) / 2);
+            const nextGame = allNextRoundGames[Math.min(parentIndex, allNextRoundGames.length - 1)];
+
+            if (nextGame) {
+              // Determine slot: odd position → slot A, even position → slot B
+              const slot: "A" | "B" = currentPos % 2 === 1 ? "A" : "B";
+              const updatePayload = slot === "A"
+                ? { team_a_id: winnerId, team_a_name: winnerName, team_a_color: winnerColor }
+                : { team_b_id: winnerId, team_b_name: winnerName, team_b_color: winnerColor };
+
+              const willHaveBothTeams = slot === "A" ? !!nextGame.team_b_id : !!nextGame.team_a_id;
+
+              await supabase.from("games")
+                .update({ ...updatePayload, ...(willHaveBothTeams ? { status: "scheduled" } : {}) })
+                .eq("id", nextGame.id);
+            }
+          }
+        }
+
+        // ── Always: advance LOSER into Third Place game (if one exists) ──
         if (loserId && finishedGame.tournament_id) {
           const { data: thirdPlaceGame } = await supabase
             .from("games")
             .select("id, team_a_id, team_b_id, team_a_name, team_b_name")
             .eq("tournament_id", finishedGame.tournament_id)
             .eq("is_third_place", true)
-            .single();
+            .maybeSingle();
 
           if (thirdPlaceGame) {
             // Fill slot A first, then slot B
@@ -162,12 +208,15 @@ export default function GamePage() {
       }
     }
     localStorage.removeItem("wirestats_active_game_id");
-    router.push("/");
+    // Show the Match Ended summary modal instead of immediately navigating
+    setMatchEnded(true);
+    setShowEndGameModal(false);
   };
 
   const clockRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const configRef = useRef<MatchConfig | null>(null);
   const gameIdRef = useRef<string | null>(null);  // Supabase game row ID
+  const tournamentIdRef = useRef<string | null>(null); // Supabase tournament ID
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Load config + resume ongoing game ─────────────────────────────────────
@@ -227,6 +276,7 @@ export default function GamePage() {
 
         // Restore all game state from the database row
         gameIdRef.current = game.id;
+        tournamentIdRef.current = game.tournament_id || null;
         setScoreA(game.score_a ?? 0);
         setScoreB(game.score_b ?? 0);
         setFoulsA(game.fouls_a ?? 0);
@@ -658,24 +708,95 @@ export default function GamePage() {
   const confirmUndo = useCallback(() => {
     if (!undoTarget) return;
     setEvents(prev => prev.filter(e => e.id !== undoTarget.id));
+    
+    let newScoreA = scoreA;
+    let newScoreB = scoreB;
+    let newFoulsA = foulsA;
+    let newFoulsB = foulsB;
+    let newActiveA = activeA;
+    let newActiveB = activeB;
+
     // Reverse score
     if (undoTarget.type === "2PT") {
-      undoTarget.team === "A" ? setScoreA(s => s - 2) : setScoreB(s => s - 2);
+      undoTarget.team === "A" ? setScoreA(s => { newScoreA = s - 2; return newScoreA; }) : setScoreB(s => { newScoreB = s - 2; return newScoreB; });
+      undoTarget.team === "A" ? (newScoreA = scoreA - 2) : (newScoreB = scoreB - 2);
     } else if (undoTarget.type === "3PT") {
-      undoTarget.team === "A" ? setScoreA(s => s - 3) : setScoreB(s => s - 3);
+      undoTarget.team === "A" ? setScoreA(s => { newScoreA = s - 3; return newScoreA; }) : setScoreB(s => { newScoreB = s - 3; return newScoreB; });
+      undoTarget.team === "A" ? (newScoreA = scoreA - 3) : (newScoreB = scoreB - 3);
     } else if (undoTarget.type === "FT") {
-      undoTarget.team === "A" ? setScoreA(s => s - 1) : setScoreB(s => s - 1);
+      undoTarget.team === "A" ? setScoreA(s => { newScoreA = s - 1; return newScoreA; }) : setScoreB(s => { newScoreB = s - 1; return newScoreB; });
+      undoTarget.team === "A" ? (newScoreA = scoreA - 1) : (newScoreB = scoreB - 1);
+    } else if (undoTarget.type === "FOUL") {
+      if (undoTarget.team === "A") { setFoulsA(f => { newFoulsA = f - 1; return newFoulsA; }); newFoulsA = foulsA - 1; }
+      else { setFoulsB(f => { newFoulsB = f - 1; return newFoulsB; }); newFoulsB = foulsB - 1; }
     } else if (undoTarget.type === "SUB" && undoTarget.playerOut) {
       const inPlayer = undoTarget.player;
       const outPlayer = undoTarget.playerOut;
       if (undoTarget.team === "A") {
-        setActiveA(prev => prev.map(p => p.id === inPlayer.id ? outPlayer : p));
+        newActiveA = activeA.map(p => p.id === inPlayer.id ? outPlayer : p);
+        setActiveA(newActiveA);
       } else {
-        setActiveB(prev => prev.map(p => p.id === inPlayer.id ? outPlayer : p));
+        newActiveB = activeB.map(p => p.id === inPlayer.id ? outPlayer : p);
+        setActiveB(newActiveB);
       }
     }
+
+    if (gameIdRef.current && supabase) {
+      // Find event type mapping to match DB
+      const eventTypeMap: Record<string, string> = { "2PT": "2pt", "3PT": "3pt", "FT": "ft", "FOUL": "foul", "SUB": "sub" };
+      const eventType = eventTypeMap[undoTarget.type] ?? undoTarget.type.toLowerCase();
+      
+      // We can't delete by ID easily because we generate random UUIDs that aren't synced back.
+      // We'll delete the most recent matching event for this game/team/player.
+      supabase
+        .from("stat_events")
+        .select("id")
+        .eq("game_id", gameIdRef.current)
+        .eq("event_type", eventType)
+        .eq("period", undoTarget.period)
+        .eq("team", undoTarget.team)
+        .eq("player_number", undoTarget.player.number)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single()
+        .then(({ data: eventRow }) => {
+          if (eventRow) {
+            supabase.from("stat_events").delete().eq("id", eventRow.id).then();
+          }
+        });
+
+      const newBenchA = configRef.current?.teamA.players.filter(p => !newActiveA.some(a => a.id === p.id)) ?? [];
+      const newBenchB = configRef.current?.teamB.players.filter(p => !newActiveB.some(a => a.id === p.id)) ?? [];
+
+      const updatePayload = {
+        score_a: newScoreA,
+        score_b: newScoreB,
+        fouls_a: newFoulsA,
+        fouls_b: newFoulsB,
+        roster_active_a: newActiveA,
+        roster_active_b: newActiveB,
+        roster_bench_a: newBenchA,
+        roster_bench_b: newBenchB,
+      };
+
+      supabase.from("games").update(updatePayload).eq("id", gameIdRef.current).then(
+        ({ error }) => {
+          if (error) {
+            console.error("Score sync error (queueing undo):", error);
+            enqueue({ type: "update_game", payload: updatePayload, gameId: gameIdRef.current! });
+            setQueueLength(getQueueLength());
+          }
+        },
+        (err) => {
+          console.error("Score sync exception (queueing undo):", err);
+          enqueue({ type: "update_game", payload: updatePayload, gameId: gameIdRef.current! });
+          setQueueLength(getQueueLength());
+        }
+      );
+    }
+
     setUndoTarget(null);
-  }, [undoTarget]);
+  }, [undoTarget, scoreA, scoreB, foulsA, foulsB, activeA, activeB]);
 
   // ── Start game ────────────────────────────────────────────────────────────
   const handleStartGame = async () => {
@@ -1139,10 +1260,13 @@ export default function GamePage() {
                 BACK
               </button>
               <button
-                onClick={() => router.push("/")}
+                onClick={() => {
+                  localStorage.removeItem("wirestats_active_game_id");
+                  router.push(tournamentIdRef.current ? `/tournaments/${tournamentIdRef.current}` : "/");
+                }}
                 className="flex-1 font-fredoka text-xl font-black uppercase tracking-widest px-6 py-4 border-4 border-[#1b630a] bg-[#65d421] hover:bg-[#7ced38] text-white transition-all shadow-[4px_4px_0_#1b630a] active:shadow-none active:translate-x-1 active:translate-y-1"
               >
-                HOME
+                BACK TO BRACKET
               </button>
             </div>
           </div>
