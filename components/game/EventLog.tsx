@@ -16,6 +16,10 @@ const typeColors: Record<string, string> = {
   "FT":  "bg-cyan-100 text-cyan-800 border-cyan-300",
   "FOUL":"bg-red-100 text-red-800 border-red-300",
   "SUB": "bg-slate-100 text-slate-700 border-slate-300",
+  "REB": "bg-amber-100 text-amber-800 border-amber-300",
+  "BLK": "bg-orange-100 text-orange-800 border-orange-300",
+  "STL": "bg-teal-100 text-teal-800 border-teal-300",
+  "AST": "bg-indigo-100 text-indigo-800 border-indigo-300",
 };
 
 const typeLabel: Record<string, string> = {
@@ -24,6 +28,10 @@ const typeLabel: Record<string, string> = {
   "FT":  "+1 FT",
   "FOUL":"FOUL",
   "SUB": "SUB",
+  "REB": "REB",
+  "BLK": "BLK",
+  "STL": "STL",
+  "AST": "AST",
 };
 
 export function EventLog({ events, config, onUndo }: Props) {

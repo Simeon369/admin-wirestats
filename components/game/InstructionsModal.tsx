@@ -27,7 +27,7 @@ export function InstructionsModal({ onClose }: Props) {
           <ol className="list-decimal list-inside font-nunito font-bold text-slate-600 space-y-1">
             <li>Type the player's <strong>jersey number</strong> (e.g. <kbd className="bg-slate-200 px-1 py-0.5 rounded border border-slate-300">12</kbd>)</li>
             <li>Press <kbd className="bg-slate-200 px-1 py-0.5 rounded border border-slate-300">←</kbd> or <kbd className="bg-slate-200 px-1 py-0.5 rounded border border-slate-300">→</kbd> to select their team</li>
-            <li>Press the <strong>action key</strong> (<kbd className="bg-slate-200 px-1 py-0.5 rounded border border-slate-300">1</kbd>, <kbd className="bg-slate-200 px-1 py-0.5 rounded border border-slate-300">2</kbd>, <kbd className="bg-slate-200 px-1 py-0.5 rounded border border-slate-300">3</kbd>, or <kbd className="bg-slate-200 px-1 py-0.5 rounded border border-slate-300">f</kbd>)</li>
+            <li>Press the <strong>action key</strong> (<kbd className="bg-slate-200 px-1 py-0.5 rounded border border-slate-300">1</kbd>, <kbd className="bg-slate-200 px-1 py-0.5 rounded border border-slate-300">2</kbd>, <kbd className="bg-slate-200 px-1 py-0.5 rounded border border-slate-300">3</kbd>, <kbd className="bg-slate-200 px-1 py-0.5 rounded border border-slate-300">f</kbd>, <kbd className="bg-slate-200 px-1 py-0.5 rounded border border-slate-300">r</kbd>, <kbd className="bg-slate-200 px-1 py-0.5 rounded border border-slate-300">b</kbd>, <kbd className="bg-slate-200 px-1 py-0.5 rounded border border-slate-300">s</kbd>, or <kbd className="bg-slate-200 px-1 py-0.5 rounded border border-slate-300">a</kbd>)</li>
             <li>Press <kbd className="bg-slate-200 px-1 py-0.5 rounded border border-slate-300">Enter ↵</kbd> to commit to the scoreboard</li>
           </ol>
         </div>
@@ -60,6 +60,22 @@ export function InstructionsModal({ onClose }: Props) {
           <li className="flex justify-between border-b border-slate-200 pb-1">
             <span><kbd className="bg-slate-200 px-2 py-1 rounded text-slate-900 border border-slate-400">f</kbd></span>
             <span>Record foul</span>
+          </li>
+          <li className="flex justify-between border-b border-slate-200 pb-1">
+            <span><kbd className="bg-slate-200 px-2 py-1 rounded text-slate-900 border border-slate-400">r</kbd></span>
+            <span>Record rebound</span>
+          </li>
+          <li className="flex justify-between border-b border-slate-200 pb-1">
+            <span><kbd className="bg-slate-200 px-2 py-1 rounded text-slate-900 border border-slate-400">b</kbd></span>
+            <span>Record block</span>
+          </li>
+          <li className="flex justify-between border-b border-slate-200 pb-1">
+            <span><kbd className="bg-slate-200 px-2 py-1 rounded text-slate-900 border border-slate-400">s</kbd></span>
+            <span>Record steal</span>
+          </li>
+          <li className="flex justify-between border-b border-slate-200 pb-1">
+            <span><kbd className="bg-slate-200 px-2 py-1 rounded text-slate-900 border border-slate-400">a</kbd></span>
+            <span>Record assist</span>
           </li>
           <li className="flex justify-between border-b border-slate-200 pb-1">
             <span><kbd className="bg-slate-200 px-2 py-1 rounded text-slate-900 border border-slate-400">1</kbd></span>

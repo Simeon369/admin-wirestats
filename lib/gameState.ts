@@ -18,7 +18,7 @@ export type MatchConfig = {
   totalPeriods: number;    // 4 or 2
 };
 
-export type StatType = '2PT' | '3PT' | 'FT' | 'FOUL';
+export type StatType = '2PT' | '3PT' | 'FT' | 'FOUL' | 'REB' | 'BLK' | 'STL' | 'AST';
 
 export type GameEvent = {
   id: string;
@@ -26,7 +26,7 @@ export type GameEvent = {
   clockSnapshot: string; // e.g. "08:45"
   team: 'A' | 'B';
   player: Player;
-  type: StatType | 'SUB';
+  type: StatType | 'SUB' | 'REB' | 'BLK' | 'STL' | 'AST';
   // For SUB events
   playerOut?: Player;
   // For scoring: points awarded
@@ -63,5 +63,5 @@ export type BufferPhase =
   | { phase: "idle" }
   | { phase: "jersey"; jersey: string }
   | { phase: "team"; jersey: string; team: "A" | "B" }
-  | { phase: "action"; jersey: string; team: "A" | "B"; action: "2" | "3" | "f" | "ft" | "x" }
+  | { phase: "action"; jersey: string; team: "A" | "B"; action: "2" | "3" | "f" | "ft" | "x" | "r" | "b" | "s" | "a" }
   | { phase: "sub-out-jersey"; jersey: string; team: "A" | "B"; subOutJersey: string };

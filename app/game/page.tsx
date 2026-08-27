@@ -371,7 +371,7 @@ export default function GamePage() {
       case "jersey": return `#${bufferPhase.jersey}`;
       case "team": return `#${bufferPhase.jersey} ${bufferPhase.team === "A" ? "← A" : "B →"}`;
       case "action": {
-        const actionLabel: Record<string, string> = { "2": "2PT", "3": "3PT", f: "FOUL", ft: "FT", x: "SUB" };
+        const actionLabel: Record<string, string> = { "2": "2PT", "3": "3PT", f: "FOUL", ft: "FT", x: "SUB", r: "REB", b: "BLK", s: "STL", a: "AST" };
         return `#${bufferPhase.jersey} ${bufferPhase.team === "A" ? "← A" : "B →"} · ${actionLabel[bufferPhase.action]}`;
       }
       case "sub-out-jersey":
@@ -385,7 +385,7 @@ export default function GamePage() {
     switch (bufferPhase.phase) {
       case "idle": return "Type jersey #...";
       case "jersey": return "Press ← or → to pick team";
-      case "team": return "Press 1 (FT), 2, 3, f (foul), or x (sub)";
+      case "team": return "Press 1 (FT), 2, 3, f (foul), r (reb), b (blk), s (stl), a (ast), or x (sub)";
       case "action":
         if (bufferPhase.action === "x") {
           const active = bufferPhase.team === "A" ? activeA : activeB;
@@ -448,7 +448,8 @@ export default function GamePage() {
     // ── Push event to Supabase ────────────────────────────────────────────
     if (gameIdRef.current) {
       const eventTypeMap: Record<string, string> = {
-        "2PT": "2pt", "3PT": "3pt", "FT": "ft", "FOUL": "foul", "SUB": "sub"
+        "2PT": "2pt", "3PT": "3pt", "FT": "ft", "FOUL": "foul", "SUB": "sub",
+        "REB": "reb", "BLK": "blk", "STL": "stl", "AST": "ast",
       };
       const eventPayload = {
         game_id: gameIdRef.current,
@@ -591,21 +592,26 @@ export default function GamePage() {
         if (prev.phase === "action") {
           if (prev.action === "x") { flashError(); return; }
 
-          // Ensure player is active (cannot score/foul if not active)
+          // Ensure player is active for scoring/foul events
+          const isStatOnly = prev.action === "r" || prev.action === "b" || prev.action === "s" || prev.action === "a";
           const isActive = active.some(p => p.id === player.id);
-          if (!isActive) {
+          if (!isActive && !isStatOnly) {
             // Show error, keep jersey/team in buffer, remove action
             flashError(true, "Bench player cannot score or foul");
             setBufferPhase({ phase: "team", jersey: prev.jersey, team: prev.team });
             return;
           }
-          const actionToType: Record<"2" | "3" | "f" | "ft", StatType> = {
+          const actionToType: Record<"2" | "3" | "f" | "ft" | "r" | "b" | "s" | "a", StatType> = {
             "2": "2PT",
             "3": "3PT",
             "f": "FOUL",
             "ft": "FT",
+            "r": "REB",
+            "b": "BLK",
+            "s": "STL",
+            "a": "AST",
           };
-          const eventType = actionToType[prev.action as "2" | "3" | "f" | "ft"];
+          const eventType = actionToType[prev.action as "2" | "3" | "f" | "ft" | "r" | "b" | "s" | "a"];
           const pts = prev.action === "2" ? 2 : prev.action === "3" ? 3 : prev.action === "ft" ? 1 : 0;
           commitEvent({
             id: crypto.randomUUID(),
@@ -675,9 +681,9 @@ export default function GamePage() {
       }
 
       // ── Action keys (only valid in team phase) ────────────────────────────
-      if (bufferPhase.phase === "team" && (key === "1" || key === "2" || key === "3" || key.toLowerCase() === "f" || key.toLowerCase() === "x")) {
-        const action = key === "1" ? "ft" : key === "2" ? "2" : key === "3" ? "3" : key.toLowerCase() === "f" ? "f" : "x";
-        setBufferPhase({ phase: "action", jersey: bufferPhase.jersey, team: bufferPhase.team, action: action as "2" | "3" | "f" | "ft" | "x" });
+      if (bufferPhase.phase === "team" && (key === "1" || key === "2" || key === "3" || key.toLowerCase() === "f" || key.toLowerCase() === "x" || key.toLowerCase() === "r" || key.toLowerCase() === "b" || key.toLowerCase() === "s" || key.toLowerCase() === "a")) {
+        const action = key === "1" ? "ft" : key === "2" ? "2" : key === "3" ? "3" : key.toLowerCase() === "f" ? "f" : key.toLowerCase() === "r" ? "r" : key.toLowerCase() === "b" ? "b" : key.toLowerCase() === "s" ? "s" : key.toLowerCase() === "a" ? "a" : "x";
+        setBufferPhase({ phase: "action", jersey: bufferPhase.jersey, team: bufferPhase.team, action: action as "2" | "3" | "f" | "ft" | "x" | "r" | "b" | "s" | "a" });
         return;
       }
 
@@ -743,7 +749,7 @@ export default function GamePage() {
 
     if (gameIdRef.current && supabase) {
       // Find event type mapping to match DB
-      const eventTypeMap: Record<string, string> = { "2PT": "2pt", "3PT": "3pt", "FT": "ft", "FOUL": "foul", "SUB": "sub" };
+      const eventTypeMap: Record<string, string> = { "2PT": "2pt", "3PT": "3pt", "FT": "ft", "FOUL": "foul", "SUB": "sub", "REB": "reb", "BLK": "blk", "STL": "stl", "AST": "ast" };
       const eventType = eventTypeMap[undoTarget.type] ?? undoTarget.type.toLowerCase();
       
       // We can't delete by ID easily because we generate random UUIDs that aren't synced back.
@@ -1170,7 +1176,19 @@ export default function GamePage() {
             <kbd className="font-mono text-white">←/→</kbd> Team
           </span>
           <span className="px-2 py-1 bg-slate-800 text-slate-300 border border-slate-700">
-            <kbd className="font-mono text-white">2</kbd>/<kbd className="font-mono text-white">3</kbd>/<kbd className="font-mono text-white">f</kbd>/<kbd className="font-mono text-white">t</kbd> Action
+            <kbd className="font-mono text-white">2</kbd>/<kbd className="font-mono text-white">3</kbd>/<kbd className="font-mono text-white">f</kbd>/<kbd className="font-mono text-white">t</kbd> Score/Foul
+          </span>
+          <span className="px-2 py-1 bg-slate-800 text-slate-300 border border-slate-700">
+            <kbd className="font-mono text-white">r</kbd> Reb
+          </span>
+          <span className="px-2 py-1 bg-slate-800 text-slate-300 border border-slate-700">
+            <kbd className="font-mono text-white">b</kbd> Blk
+          </span>
+          <span className="px-2 py-1 bg-slate-800 text-slate-300 border border-slate-700">
+            <kbd className="font-mono text-white">s</kbd> Stl
+          </span>
+          <span className="px-2 py-1 bg-slate-800 text-slate-300 border border-slate-700">
+            <kbd className="font-mono text-white">a</kbd> Ast
           </span>
           <span className="px-2 py-1 bg-slate-800 text-slate-300 border border-slate-700">
             <kbd className="font-mono text-white">x</kbd> Sub
