@@ -305,7 +305,7 @@ export default function GamePage() {
             clockSnapshot: (row.clock_snapshot as string) ?? "",
             team: (row.team as "A" | "B"),
             player: { id: `${row.team}-${row.player_number}`, name: (row.player_name as string) ?? "", number: (row.player_number as string) ?? "" },
-            type: ({ "2pt": "2PT", "3pt": "3PT", "ft": "FT", "foul": "FOUL", "sub": "SUB" }[row.event_type as string] ?? row.event_type) as "2PT" | "3PT" | "FT" | "FOUL" | "SUB",
+            type: ({ "2pt": "2PT", "3pt": "3PT", "ft": "FT", "foul": "FOUL", "sub": "SUB", "reb": "REB", "blk": "BLK", "stl": "STL", "ast": "AST" }[row.event_type as string] ?? row.event_type) as "2PT" | "3PT" | "FT" | "FOUL" | "SUB" | "REB" | "BLK" | "STL" | "AST",
             playerOut: row.player_out_number ? { id: `${row.team}-${row.player_out_number}`, name: (row.player_out_name as string) ?? "", number: (row.player_out_number as string) ?? "" } : undefined,
             points: (row.points as number) ?? 0,
           }));
