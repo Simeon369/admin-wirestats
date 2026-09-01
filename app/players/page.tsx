@@ -365,7 +365,6 @@ export default function PlayersManagement() {
   const [gender, setGender] = useState("");
   const [age, setAge] = useState<number | "">("");
   const [profileImage, setProfileImage] = useState("");
-  const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
 
   // Directory state
