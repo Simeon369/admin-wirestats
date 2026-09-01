@@ -364,7 +364,8 @@ export default function PlayersManagement() {
   const [position, setPosition] = useState("");
   const [gender, setGender] = useState("");
   const [age, setAge] = useState<number | "">("");
-  const [profileImage, setProfileImage] = useState("");
+  const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>("");
   const [formError, setFormError] = useState("");
 
   // Directory state
@@ -377,6 +378,7 @@ export default function PlayersManagement() {
 
   const nameInputRef = useRef<HTMLInputElement>(null);
   const submitBtnRef = useRef<HTMLButtonElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchPlayers();
@@ -435,10 +437,29 @@ export default function PlayersManagement() {
 
     setSaving(true);
     setFormError("");
-    
+
+    // Upload profile image to Supabase storage if provided
+    let profileImageUrl: string | null = null;
+    if (profileImageFile) {
+      const ext = profileImageFile.name.split(".").pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("player-images")
+        .upload(fileName, profileImageFile, { upsert: true });
+      if (uploadError) {
+        setFormError("Image upload failed: " + uploadError.message);
+        setSaving(false);
+        return;
+      }
+      const { data: urlData } = supabase.storage
+        .from("player-images")
+        .getPublicUrl(uploadData.path);
+      profileImageUrl = urlData.publicUrl;
+    }
+
     const { data } = await supabase
       .from("players")
-      .insert([{ full_name: fullName.trim(), jersey_name: jerseyName.trim(), position, gender, age: Number(age), profile_image: profileImage.trim() || null }])
+      .insert([{ full_name: fullName.trim(), jersey_name: jerseyName.trim(), position, gender, age: Number(age), profile_image: profileImageUrl }])
       .select();
     if (data && data.length > 0) {
       setPlayers([data[0] as GlobalPlayer, ...players]);
@@ -447,7 +468,9 @@ export default function PlayersManagement() {
       setPosition("");
       setGender("");
       setAge("");
-      setProfileImage("");
+      setProfileImageFile(null);
+      setImagePreview("");
+      if (fileInputRef.current) fileInputRef.current.value = "";
       nameInputRef.current?.focus();
     }
     setSaving(false);
@@ -602,16 +625,58 @@ export default function PlayersManagement() {
               />
             </div>
             <div className="flex-1 flex flex-col gap-1">
-              <label className="font-nunito text-xs font-bold uppercase tracking-widest text-slate-400">Profile Image URL (Optional)</label>
+              <label className="font-nunito text-xs font-bold uppercase tracking-widest text-slate-400">Profile Photo <span className="text-slate-600 normal-case">(optional)</span></label>
+              <div className="flex items-center gap-3">
+                {/* Preview */}
+                <div className="w-14 h-14 shrink-0 border-2 border-slate-600 overflow-hidden flex items-center justify-center bg-slate-900">
+                  {imagePreview ? (
+                    <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6 text-slate-600">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </div>
+                {/* Upload button */}
+                <div className="flex-1 flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="font-fredoka text-xs font-black uppercase tracking-widest px-3 py-2 border-2 bg-slate-900 border-slate-600 text-slate-400 hover:border-slate-400 hover:text-white transition-colors text-left"
+                  >
+                    {profileImageFile ? "Change Photo" : "Upload Photo"}
+                  </button>
+                  {profileImageFile && (
+                    <span className="font-nunito text-[10px] text-slate-500 truncate">{profileImageFile.name}</span>
+                  )}
+                  {imagePreview && (
+                    <button
+                      type="button"
+                      onClick={() => { setProfileImageFile(null); setImagePreview(""); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                      className="font-nunito text-[10px] font-bold text-red-400 hover:text-red-300 text-left transition-colors"
+                    >
+                      Remove photo
+                    </button>
+                  )}
+                </div>
+              </div>
               <input
-                type="text"
-                placeholder="https://example.com/image.jpg"
-                value={profileImage}
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
                 onChange={e => {
-                  setProfileImage(e.target.value);
+                  const file = e.target.files?.[0] ?? null;
+                  setProfileImageFile(file);
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = ev => setImagePreview(ev.target?.result as string);
+                    reader.readAsDataURL(file);
+                  } else {
+                    setImagePreview("");
+                  }
                   setFormError("");
                 }}
-                className="bg-slate-900 border-2 border-slate-600 focus:border-[#65d421] outline-none text-white font-nunito font-bold px-3 py-2.5 text-sm placeholder:text-slate-600 transition-colors"
               />
             </div>
           </div>
