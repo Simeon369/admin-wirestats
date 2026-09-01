@@ -197,14 +197,23 @@ function PlayerRow({
   const [editJersey, setEditJersey] = useState(player.jersey_name);
   const [editPos, setEditPos] = useState(player.position);
   const [editGender, setEditGender] = useState(player.gender || "");
+  const [editAge, setEditAge] = useState<number | "">(player.age ?? "");
+  const [editImageFile, setEditImageFile] = useState<File | null>(null);
+  const [editImagePreview, setEditImagePreview] = useState<string>(player.profile_image || "");
+  const [removePhoto, setRemovePhoto] = useState(false);
 
   const editNameRef = useRef<HTMLInputElement>(null);
+  const editFileRef = useRef<HTMLInputElement>(null);
 
   const startEdit = () => {
     setEditName(player.full_name);
     setEditJersey(player.jersey_name);
     setEditPos(player.position);
     setEditGender(player.gender || "");
+    setEditAge(player.age ?? "");
+    setEditImageFile(null);
+    setEditImagePreview(player.profile_image || "");
+    setRemovePhoto(false);
     setEditing(true);
     setTimeout(() => editNameRef.current?.focus(), 20);
   };
@@ -216,9 +225,36 @@ function PlayerRow({
   const saveEdit = async () => {
     if (!editName.trim() || !editJersey.trim()) return;
     setSaving(true);
+
+    let profileImageUrl: string | null = player.profile_image ?? null;
+
+    // Upload new photo if selected
+    if (editImageFile) {
+      const ext = editImageFile.name.split(".").pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("player-images")
+        .upload(fileName, editImageFile, { upsert: true });
+      if (!uploadError && uploadData) {
+        const { data: urlData } = supabase.storage
+          .from("player-images")
+          .getPublicUrl(uploadData.path);
+        profileImageUrl = urlData.publicUrl;
+      }
+    } else if (removePhoto) {
+      profileImageUrl = null;
+    }
+
     const { data } = await supabase
       .from("players")
-      .update({ full_name: editName.trim(), jersey_name: editJersey.trim(), position: editPos, gender: editGender || null })
+      .update({
+        full_name: editName.trim(),
+        jersey_name: editJersey.trim(),
+        position: editPos,
+        gender: editGender || null,
+        age: editAge ? Number(editAge) : null,
+        profile_image: profileImageUrl,
+      })
       .eq("id", player.id)
       .select();
     if (data && data.length > 0) {
@@ -228,12 +264,11 @@ function PlayerRow({
     setSaving(false);
   };
 
-
-
   // ── Edit mode ──────────────────────────────────────────
   if (editing) {
     return (
-      <div className="flex flex-col gap-2 px-4 py-3 bg-slate-700 border-2 border-[#65d421]">
+      <div className="flex flex-col gap-3 px-4 py-3 bg-slate-700 border-2 border-[#65d421]">
+        {/* Row 1: Name + Jersey */}
         <div className="flex gap-2">
           <input
             ref={editNameRef}
@@ -251,7 +286,9 @@ function PlayerRow({
             className="w-24 bg-slate-900 border-2 border-slate-600 focus:border-[#65d421] outline-none text-white font-nunito font-bold px-3 py-2 text-sm uppercase placeholder:text-slate-600 transition-colors"
           />
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Row 2: Position + Gender + Age */}
+        <div className="flex items-center gap-2 flex-wrap">
           <InlineSelect
             options={POSITIONS}
             value={editPos}
@@ -262,21 +299,86 @@ function PlayerRow({
             value={editGender || "Male"}
             onChange={v => setEditGender(v)}
           />
-          <div className="flex gap-2 shrink-0 ml-auto">
-            <button
-              onClick={cancelEdit}
-              className="font-fredoka text-xs font-black px-3 py-1.5 border-2 bg-slate-800 border-slate-600 text-slate-400 hover:text-white transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={saveEdit}
-              disabled={saving || !editName.trim() || !editJersey.trim()}
-              className="font-fredoka text-xs font-black px-3 py-1.5 border-2 bg-[#65d421] border-[#1b630a] text-slate-900 shadow-[2px_2px_0_#1b630a] hover:-translate-y-px transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {saving ? "Saving…" : "Save"}
-            </button>
+          <div className="flex items-center gap-1.5">
+            <label className="font-nunito text-[10px] font-bold uppercase tracking-widest text-slate-400">Age</label>
+            <input
+              type="number"
+              value={editAge}
+              onChange={e => setEditAge(e.target.value === "" ? "" : Number(e.target.value))}
+              placeholder="—"
+              min={1}
+              max={99}
+              className="w-14 bg-slate-900 border-2 border-slate-600 focus:border-[#65d421] outline-none text-white font-nunito font-bold px-2 py-1.5 text-sm placeholder:text-slate-600 transition-colors"
+            />
           </div>
+        </div>
+
+        {/* Row 3: Photo */}
+        <div className="flex items-center gap-3">
+          {/* Avatar preview */}
+          <div className="w-10 h-10 shrink-0 border-2 border-slate-600 overflow-hidden flex items-center justify-center bg-slate-900">
+            {editImagePreview && !removePhoto ? (
+              <img src={editImagePreview} alt="Preview" className="w-full h-full object-cover" />
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-slate-600">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z" clipRule="evenodd" />
+              </svg>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => editFileRef.current?.click()}
+              className="font-fredoka text-[11px] font-black uppercase tracking-widest px-2.5 py-1.5 border-2 bg-slate-800 border-slate-600 text-slate-400 hover:border-slate-400 hover:text-white transition-colors"
+            >
+              {editImagePreview && !removePhoto ? "Change" : "Upload"} Photo
+            </button>
+            {(editImagePreview || player.profile_image) && !removePhoto && (
+              <button
+                type="button"
+                onClick={() => { setRemovePhoto(true); setEditImageFile(null); setEditImagePreview(""); if (editFileRef.current) editFileRef.current.value = ""; }}
+                className="font-nunito text-[10px] font-bold text-red-400 hover:text-red-300 transition-colors"
+              >
+                Remove
+              </button>
+            )}
+            {editImageFile && (
+              <span className="font-nunito text-[10px] text-slate-500 truncate max-w-[120px]">{editImageFile.name}</span>
+            )}
+          </div>
+          <input
+            ref={editFileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={e => {
+              const file = e.target.files?.[0] ?? null;
+              setEditImageFile(file);
+              setRemovePhoto(false);
+              if (file) {
+                const reader = new FileReader();
+                reader.onload = ev => setEditImagePreview(ev.target?.result as string);
+                reader.readAsDataURL(file);
+              }
+            }}
+          />
+        </div>
+
+        {/* Row 4: Actions */}
+        <div className="flex gap-2">
+          <button
+            onClick={cancelEdit}
+            className="font-fredoka text-xs font-black px-3 py-1.5 border-2 bg-slate-800 border-slate-600 text-slate-400 hover:text-white transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={saveEdit}
+            disabled={saving || !editName.trim() || !editJersey.trim()}
+            className="font-fredoka text-xs font-black px-3 py-1.5 border-2 bg-[#65d421] border-[#1b630a] text-slate-900 shadow-[2px_2px_0_#1b630a] hover:-translate-y-px transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
         </div>
       </div>
     );
