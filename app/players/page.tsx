@@ -290,6 +290,17 @@ function PlayerRow({
         {index + 1}
       </span>
 
+      {/* Avatar */}
+      <div className="w-8 h-8 shrink-0 overflow-hidden border-2 border-slate-600">
+        {player.profile_image ? (
+          <img src={player.profile_image} alt={player.full_name} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full bg-slate-700 flex items-center justify-center">
+            <span className="font-fredoka text-sm font-black text-slate-300">{player.jersey_name.charAt(0)}</span>
+          </div>
+        )}
+      </div>
+
       {/* Position badge */}
       <span className="font-fredoka text-xs font-black px-2 py-1 bg-slate-700 text-slate-300 border border-slate-600 shrink-0 w-9 text-center">
         {player.position}
@@ -301,6 +312,11 @@ function PlayerRow({
         {player.gender && (
           <span className="font-nunito text-[10px] font-bold px-1.5 py-0.5 bg-slate-700 text-slate-300 border border-slate-600 uppercase tracking-widest shrink-0">
             {player.gender}
+          </span>
+        )}
+        {player.age && (
+          <span className="font-nunito text-[10px] font-bold px-1.5 py-0.5 bg-slate-700 text-slate-300 border border-slate-600 uppercase tracking-widest shrink-0">
+            {player.age}y
           </span>
         )}
       </div>
@@ -347,6 +363,9 @@ export default function PlayersManagement() {
   const [jerseyName, setJerseyName] = useState("");
   const [position, setPosition] = useState("");
   const [gender, setGender] = useState("");
+  const [age, setAge] = useState<number | "">("");
+  const [profileImage, setProfileImage] = useState("");
+  const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
 
   // Directory state
@@ -410,12 +429,17 @@ export default function PlayersManagement() {
       return;
     }
 
+    if (!age) {
+      setFormError("Please enter an age for the player.");
+      return;
+    }
+
     setSaving(true);
     setFormError("");
     
     const { data } = await supabase
       .from("players")
-      .insert([{ full_name: fullName.trim(), jersey_name: jerseyName.trim(), position, gender }])
+      .insert([{ full_name: fullName.trim(), jersey_name: jerseyName.trim(), position, gender, age: Number(age), profile_image: profileImage.trim() || null }])
       .select();
     if (data && data.length > 0) {
       setPlayers([data[0] as GlobalPlayer, ...players]);
@@ -423,6 +447,8 @@ export default function PlayersManagement() {
       setJerseyName("");
       setPosition("");
       setGender("");
+      setAge("");
+      setProfileImage("");
       nameInputRef.current?.focus();
     }
     setSaving(false);
@@ -557,6 +583,37 @@ export default function PlayersManagement() {
                   </button>
                 ))}
               </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1 flex flex-col gap-1">
+              <label className="font-nunito text-xs font-bold uppercase tracking-widest text-slate-400">Age</label>
+              <input
+                type="number"
+                placeholder="e.g. 24"
+                value={age}
+                onChange={e => {
+                  setAge(e.target.value === "" ? "" : Number(e.target.value));
+                  setFormError("");
+                }}
+                className="bg-slate-900 border-2 border-slate-600 focus:border-[#65d421] outline-none text-white font-nunito font-bold px-3 py-2.5 text-sm placeholder:text-slate-600 transition-colors"
+                min={1}
+                max={99}
+              />
+            </div>
+            <div className="flex-1 flex flex-col gap-1">
+              <label className="font-nunito text-xs font-bold uppercase tracking-widest text-slate-400">Profile Image URL (Optional)</label>
+              <input
+                type="text"
+                placeholder="https://example.com/image.jpg"
+                value={profileImage}
+                onChange={e => {
+                  setProfileImage(e.target.value);
+                  setFormError("");
+                }}
+                className="bg-slate-900 border-2 border-slate-600 focus:border-[#65d421] outline-none text-white font-nunito font-bold px-3 py-2.5 text-sm placeholder:text-slate-600 transition-colors"
+              />
             </div>
           </div>
 

@@ -137,6 +137,7 @@ export default function MatchSetup() {
   const [qrJerseyName, setQrJerseyName] = useState("");
   const [qrPosition, setQrPosition] = useState("");
   const [qrGender, setQrGender] = useState("");
+  const [qrAge, setQrAge] = useState<number | "">("");
   const [qrFormError, setQrFormError] = useState("");
   const [targetTeamForQR, setTargetTeamForQR] = useState<"A" | "B" | null>(null);
   
@@ -247,10 +248,15 @@ export default function MatchSetup() {
       return;
     }
 
+    if (!qrAge) {
+      setQrFormError("Please enter an age for the player.");
+      return;
+    }
+
     setQrFormError("");
     
     const { data } = await supabase.from("players").insert([
-      { full_name: qrFullName.trim(), jersey_name: qrJerseyName.trim(), position: qrPosition, gender: qrGender }
+      { full_name: qrFullName.trim(), jersey_name: qrJerseyName.trim(), position: qrPosition, gender: qrGender, age: Number(qrAge) }
     ]).select();
 
     if (data && data.length > 0) {
@@ -262,6 +268,7 @@ export default function MatchSetup() {
       setQrJerseyName("");
       setQrPosition("");
       setQrGender("");
+      setQrAge("");
     }
   };
 
@@ -559,6 +566,22 @@ export default function MatchSetup() {
                   ))}
                 </div>
               </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="font-nunito text-xs font-bold uppercase tracking-widest text-slate-400">Age</label>
+              <input
+                type="number"
+                placeholder="e.g. 24"
+                value={qrAge}
+                onChange={e => {
+                  setQrAge(e.target.value === "" ? "" : Number(e.target.value));
+                  setQrFormError("");
+                }}
+                className="bg-slate-900 border-2 border-slate-600 focus:border-[#65d421] outline-none text-white font-nunito font-bold px-3 py-2 text-sm transition-colors"
+                min={1}
+                max={99}
+              />
             </div>
 
             {qrFormError && (
